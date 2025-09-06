@@ -29,7 +29,7 @@ jobs:
           docker run --rm --platform linux/${{ matrix.arch }} -v $(pwd):/cyclonedx-cr -w /cyclonedx-cr --entrypoint="" 84codes/crystal:latest-debian-12 sh -c "
             apt-get update && apt-get install -y libyaml-dev ca-certificates git curl &&
             shards install --production &&
-            /usr/bin/crystal build src/cyclonedx-cr.cr -o cyclonedx-cr --release --no-debug --static
+            /usr/bin/crystal build src/main.cr -o cyclonedx-cr --release --no-debug --static
           "
       - name: Create Debian Package Structure
         run: |
