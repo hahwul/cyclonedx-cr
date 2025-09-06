@@ -1,0 +1,13 @@
+name: cyclonedx-cr
+version: 0.1.0
+
+authors:
+  - hahwul <hahwul@gmail.com>
+
+targets:
+  cyclonedx-cr:
+    main: src/main.cr
+
+crystal: 1.6.2
+
+license: MIT
