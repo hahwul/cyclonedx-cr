@@ -22,7 +22,7 @@ jobs:
 
       # Generate SBOM using hahwul/cyclonedx-cr action
       - name: Generate SBOM
-        uses: hahwul/cyclonedx-cr@v1
+        uses: hahwul/cyclonedx-cr@v0.1.2
         with:
           path: ./
           output: ./sbom.xml
