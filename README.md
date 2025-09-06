@@ -91,6 +91,32 @@ docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/hahwul/cyclonedx-cr:l
   -s custom-shard.yml -i custom-shard.lock --output-format xml -o sbom.xml
 ```
 
+#### GitHub Actions
+```yaml
+name: Generate SBOM
+on: [push, pull_request]
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate CycloneDX SBOM
+        id: cyclonedx
+        uses: hahwul/cyclonedx-cr@main
+        with:
+          output_file: 'sbom.json'
+          output_format: 'json'
+          spec_version: '1.6'
+          
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyclonedx-sbom
+          path: sbom.json
+```
+
 ## Requirements
 
 Your Crystal project must have:
