@@ -101,15 +101,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Generate CycloneDX SBOM
         id: cyclonedx
         uses: hahwul/cyclonedx-cr@main
         with:
-          output_file: 'sbom.json'
-          output_format: 'json'
-          spec_version: '1.6'
-          
+          shard_file: ./shard.yml # Explicitly map to shard_file
+          lock_file: ./shard.lock # Explicitly map to lock_file
+          output_file: ./sbom.xml # Map to output_file
+          output_format: xml # Map to output_format
+          spec_version: 1.6 # Optional, specify if needed
+
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
