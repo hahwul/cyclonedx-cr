@@ -7,23 +7,23 @@ inputs:
   shard_file:
     description: The shard.yml file path
     required: false
-    default: 'shard.yml'
+    default: "shard.yml"
   lock_file:
     description: The shard.lock file path
     required: false
-    default: 'shard.lock'
+    default: "shard.lock"
   output_file:
     description: Output file path (if not specified, outputs to stdout)
     required: false
-    default: ''
+    default: ""
   spec_version:
-    description: CycloneDX spec version (options: 1.4, 1.5, 1.6)
+    description: "CycloneDX spec version (options: 1.4, 1.5, 1.6)"
     required: false
-    default: '1.6'
+    default: "1.6"
   output_format:
-    description: Output format (options: json, xml, csv)
+    description: "Output format (options: json, xml, csv)"
     required: false
-    default: 'json'
+    default: "json"
 outputs:
   sbom_file:
     description: Path to the generated SBOM file
