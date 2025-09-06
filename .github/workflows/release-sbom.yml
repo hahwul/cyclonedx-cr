@@ -7,10 +7,8 @@ on:
 jobs:
   generate-sbom:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
-
     steps:
       # Checkout the repository code
       - name: Checkout code
@@ -20,17 +18,15 @@ jobs:
       - name: Generate SBOM
         uses: hahwul/cyclonedx-cr@v0.1.8
         with:
-          path: ./
-          output: ./sbom.xml
-          format: xml
+          shard_file: ./shard.yml # Explicitly map to shard_file
+          lock_file: ./shard.lock # Explicitly map to lock_file
+          output_file: ./sbom.xml # Map to output_file
+          output_format: xml # Map to output_format
+          spec_version: 1.6 # Optional, specify if needed
 
       # Upload SBOM to GitHub Release
       - name: Upload SBOM to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./sbom.xml
-          asset_name: sbom.xml
-          asset_content_type: application/xml
+          files: ./sbom.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
