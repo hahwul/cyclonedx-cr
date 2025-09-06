@@ -1,0 +1,40 @@
+name: Generate and Upload SBOM
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  generate-sbom:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Crystal environment
+      - name: Set up Crystal
+        uses: crystal-lang/install-crystal@v1
+
+      # Generate SBOM using hahwul/cyclonedx-cr action
+      - name: Generate SBOM
+        uses: hahwul/cyclonedx-cr@v1
+        with:
+          path: ./
+          output: ./sbom.xml
+          format: xml
+
+      # Upload SBOM to GitHub Release
+      - name: Upload SBOM to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./sbom.xml
+          asset_name: sbom.xml
+          asset_content_type: application/xml
