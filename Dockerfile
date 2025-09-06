@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /cyclonedx-cr/bin/cyclonedx-cr /usr/local/bin/cyclonedx-cr
 
 # Run as non-root
-USER 2:2
+# USER 2:2
 
 # Default command
 CMD ["cyclonedx-cr"]
