@@ -62,16 +62,24 @@ class App
     shard_file = "shard.yml"
     shard_lock_file = "shard.lock"
     output_file = ""
+    spec_version = "1.6" # Default to latest
+    supported_versions = ["1.4", "1.5", "1.6"]
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
       parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: shard.lock)") { |f| shard_lock_file = f }
       parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: shard.yml)") { |f| shard_file = f }
       parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| output_file = f }
+      parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{supported_versions.join(", ")}, default: #{spec_version})") { |v| spec_version = v }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         next
       end
+    end
+
+    unless supported_versions.includes?(spec_version)
+      puts "Error: Unsupported spec version '#{spec_version}'. Supported versions are: #{supported_versions.join(", ")}"
+      return
     end
 
     unless File.exists?(shard_file)
@@ -92,6 +100,7 @@ class App
 
     # Create BOM
     bom = CycloneDX::BOM.new(
+      spec_version: spec_version,
       components: [main_component] + dependencies
     )
 
