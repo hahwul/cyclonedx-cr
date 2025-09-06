@@ -36,12 +36,12 @@ jobs:
         name: Build binary (Linux)
         run: |
           mkdir -p build
-          # Use Crystal container to build static binary
+          # Use Crystal container to build dynamically linked binary
           docker run --rm -v $(pwd):/cyclonedx-cr -w /cyclonedx-cr --entrypoint="" 84codes/crystal:latest-debian-12 sh -c "
-            apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libyaml-dev libxml2-dev liblzma-dev zlib1g-dev libpcre2-dev libgc-dev ca-certificates git curl &&
+            apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libyaml-dev libxml2-dev libicu-dev liblzma-dev zlib1g-dev libpcre2-dev libgc-dev ca-certificates git curl &&
             shards install --production &&
             mkdir -p build &&
-            /usr/bin/crystal build src/main.cr -o build/cyclonedx-cr-${GITHUB_REF_SLUG}-linux-${ARCH} --release --no-debug
+            /usr/bin/crystal build src/main.cr -o build/cyclonedx-cr-${GITHUB_REF_SLUG}-linux-${ARCH} --release --no-debug --static && strip build/cyclonedx-cr-${GITHUB_REF_SLUG}-linux-${ARCH}
           "
       - if: startsWith(matrix.os, 'macos')
         name: Build binary (macOS)
@@ -49,7 +49,7 @@ jobs:
           mkdir -p build
           crystal build src/main.cr \
             -o build/cyclonedx-cr-${GITHUB_REF_SLUG}-osx-${ARCH} \
-            --no-debug --release
+            --no-debug --release && strip build/cyclonedx-cr-${GITHUB_REF_SLUG}-osx-${ARCH}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

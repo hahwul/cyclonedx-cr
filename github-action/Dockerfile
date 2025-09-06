@@ -4,8 +4,7 @@ FROM ghcr.io/hahwul/cyclonedx-cr:latest
 # Copy the entrypoint script into the container
 COPY entrypoint.sh /entrypoint.sh
 
-# Make the entrypoint script executable
-RUN chmod 755 /entrypoint.sh
+# Run the script via /bin/sh, so no executable bit is required
 
 # Set the entrypoint to the script
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "-l", "/entrypoint.sh"]
