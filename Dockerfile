@@ -7,8 +7,7 @@ COPY . .
 RUN apt-get update && \
     apt-get install -y libyaml-dev && \
     shards install --production && \
-    shards build --release --no-debug --production --static
-# Ref: https://crystal-lang.org/reference/1.15/guides/static_linking.html
+    shards build --release --no-debug --production
 
 ##= RUNNER =##
 FROM debian:13-slim
