@@ -1,4 +1,4 @@
-# cyclonedx-cr
+# cyclonedx-cr (crytsal)
 
 ```
 [INFO] Loading (embedded) default schema config file: 'config.json'...
