@@ -1,6 +1,7 @@
 require "json"
 require "xml"
 require "yaml"
+require "csv"
 require "option_parser"
 require "uuid"
 
@@ -51,9 +52,9 @@ class CycloneDX::BOM
     String.build do |str|
       XML.build(str) do |xml|
         xml.element("bom", attributes: {
-          "xmlns":        "http://cyclonedx.org/schema/bom/#{@spec_version}",
-          "version":      "1",
-          "serialNumber": "urn:uuid:#{UUID.random}",
+          "xmlns": "http://cyclonedx.org/schema/bom/#{@spec_version}",
+          "version": "1",
+          "serialNumber": "urn:uuid:#{UUID.random}"
         }) do
           xml.element("components") do
             @components.each do |comp|
@@ -61,6 +62,15 @@ class CycloneDX::BOM
             end
           end
         end
+      end
+    end
+  end
+
+  def to_csv
+    CSV.build do |csv|
+      csv.row "Name", "Version", "PURL", "Type"
+      @components.each do |comp|
+        csv.row comp.name, comp.version, comp.purl, comp.component_type
       end
     end
   end
@@ -95,7 +105,7 @@ class App
     spec_version = "1.6"
     output_format = "json"
     supported_versions = ["1.4", "1.5", "1.6"]
-    supported_formats = ["json", "xml"]
+    supported_formats = ["json", "xml", "csv"]
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
@@ -143,6 +153,8 @@ class App
                        bom.to_json
                      when "xml"
                        bom.to_xml
+                     when "csv"
+                       bom.to_csv
                      else
                        "" # Should not happen due to validation above
                      end
