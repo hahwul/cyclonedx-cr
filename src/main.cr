@@ -73,7 +73,7 @@ class App
       parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{supported_versions.join(", ")}, default: #{spec_version})") { |v| spec_version = v }
       parser.on("-h", "--help", "Show this help") do
         puts parser
-        next
+        exit 0
       end
     end
 
