@@ -1,0 +1,40 @@
+name: CycloneDX Crystal Action
+description: A GitHub Action to generate CycloneDX SBOM from Crystal shard projects.
+branding:
+  icon: package
+  color: purple
+inputs:
+  shard_file:
+    description: The shard.yml file path
+    required: false
+    default: 'shard.yml'
+  lock_file:
+    description: The shard.lock file path
+    required: false
+    default: 'shard.lock'
+  output_file:
+    description: Output file path (if not specified, outputs to stdout)
+    required: false
+    default: ''
+  spec_version:
+    description: CycloneDX spec version (options: 1.4, 1.5, 1.6)
+    required: false
+    default: '1.6'
+  output_format:
+    description: Output format (options: json, xml, csv)
+    required: false
+    default: 'json'
+outputs:
+  sbom_file:
+    description: Path to the generated SBOM file
+  sbom_content:
+    description: Content of the generated SBOM (when output_file is not specified)
+runs:
+  using: docker
+  image: github-action/Dockerfile
+  args:
+    - ${{ inputs.shard_file }}
+    - ${{ inputs.lock_file }}
+    - ${{ inputs.output_file }}
+    - ${{ inputs.spec_version }}
+    - ${{ inputs.output_format }}
