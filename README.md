@@ -93,18 +93,25 @@ docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/hahwul/cyclonedx-cr:l
 
 #### GitHub Actions
 ```yaml
-name: Generate SBOM
-on: [push, pull_request]
+name: Generate and Upload SBOM
+
+on:
+  release:
+    types: [created]
 
 jobs:
-  sbom:
+  generate-sbom:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Generate CycloneDX SBOM
-        id: cyclonedx
-        uses: hahwul/cyclonedx-cr@main
+      # Generate SBOM using hahwul/cyclonedx-cr action
+      - name: Generate SBOM
+        uses: hahwul/cyclonedx-cr@v1.0.0
         with:
           shard_file: ./shard.yml # Explicitly map to shard_file
           lock_file: ./shard.lock # Explicitly map to lock_file
@@ -112,11 +119,13 @@ jobs:
           output_format: xml # Map to output_format
           spec_version: 1.6 # Optional, specify if needed
 
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+      # Upload SBOM to GitHub Release
+      - name: Upload SBOM to Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: cyclonedx-sbom
-          path: sbom.json
+          files: ./sbom.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
 ```
 
 ## Requirements
