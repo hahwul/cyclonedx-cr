@@ -2,7 +2,7 @@
 
 # GitHub Action inputs:
 # $1: shard_file
-# $2: lock_file  
+# $2: lock_file
 # $3: output_file
 # $4: spec_version
 # $5: output_format
@@ -14,14 +14,14 @@ OUTPUT_FILE=$3
 SPEC_VERSION=${4:-1.6}
 OUTPUT_FORMAT=${5:-json}
 
-# Build the cyclonedx-cr command  
+# Build the cyclonedx-cr command
 # Try different possible locations for the cyclonedx-cr binary
 if command -v cyclonedx-cr >/dev/null 2>&1; then
     CYCLONEDX_BIN="cyclonedx-cr"
 elif [ -f "/usr/local/bin/cyclonedx-cr" ]; then
     CYCLONEDX_BIN="/usr/local/bin/cyclonedx-cr"
 elif [ -f "/usr/bin/cyclonedx-cr" ]; then
-    CYCLONEDX_BIN="/usr/bin/cyclonedx-cr" 
+    CYCLONEDX_BIN="/usr/bin/cyclonedx-cr"
 else
     echo "Error: cyclonedx-cr binary not found"
     exit 1
@@ -60,17 +60,19 @@ fi
 # Set GitHub Action outputs
 if [ "$OUTPUT_TO_FILE" = "true" ]; then
     # When outputting to file, set the file path
-    echo "sbom_file=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+    echo "sbom_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
     echo "Generated SBOM file: $OUTPUT_FILE"
 else
     # When outputting to stdout (captured in temp file), set the content
     sbom_content=$(cat "$OUTPUT_FILE")
     # For multiline output, we need to handle it properly for GitHub Actions
+    # Use a unique delimiter to avoid collisions with content
+    DELIM="__CDX_CR_DELIM_$(date +%s)_$RANDOM__"
     {
-        echo "sbom_content<<EOF"
+        printf "sbom_content<<%s\n" "$DELIM"
         cat "$OUTPUT_FILE"
-        echo "EOF"
-    } >> $GITHUB_OUTPUT
+        printf "%s\n" "$DELIM"
+    } >> "$GITHUB_OUTPUT"
     echo "Generated SBOM content (captured to output)"
 fi
 
