@@ -41,7 +41,7 @@ jobs:
             apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libyaml-dev libxml2-dev liblzma-dev zlib1g-dev libpcre2-dev libgc-dev ca-certificates git curl &&
             shards install --production &&
             mkdir -p build &&
-            /usr/bin/crystal build src/main.cr -o build/cyclonedx-cr-${GITHUB_REF_SLUG}-linux-${ARCH} --release --no-debug --static
+            /usr/bin/crystal build src/main.cr -o build/cyclonedx-cr-${GITHUB_REF_SLUG}-linux-${ARCH} --release --no-debug
           "
       - if: startsWith(matrix.os, 'macos')
         name: Build binary (macOS)
