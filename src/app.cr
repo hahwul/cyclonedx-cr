@@ -14,7 +14,7 @@ class App
     output_file = ""
     spec_version = "1.6"
     output_format = "json"
-    supported_versions = ["1.4", "1.5", "1.6"]
+    supported_versions = ["1.4", "1.5", "1.6", "1.7"]
     supported_formats = ["json", "xml", "csv"]
 
     # Parse command-line options.
