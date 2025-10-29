@@ -33,9 +33,7 @@ class CycloneDX::Component
     builder.element("component", attributes: {"type": @component_type}) do
       builder.element("name") { builder.text(@name) }
       builder.element("version") { builder.text(@version) }
-      if @purl
-        builder.element("purl") { builder.text(@purl.as(String)) }
-      end
+      builder.element("purl") { builder.text(@purl.not_nil!) } if @purl
     end
   end
 end

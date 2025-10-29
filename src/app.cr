@@ -7,81 +7,111 @@ require "./shard/shard_lock_file"
 # Main application class for generating CycloneDX SBOMs from Crystal Shard files.
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
+  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
+  SUPPORTED_FORMATS  = ["json", "xml", "csv"]
+  DEFAULT_VERSION    = "1.6"
+  DEFAULT_FORMAT     = "json"
+
   # Runs the main application logic.
   def run
-    shard_file = "shard.yml"
-    shard_lock_file = "shard.lock"
-    output_file = ""
-    spec_version = "1.6"
-    output_format = "json"
-    supported_versions = ["1.4", "1.5", "1.6", "1.7"]
-    supported_formats = ["json", "xml", "csv"]
+    options = parse_options
+    return unless validate_options(options)
+    return unless validate_input_files(options)
 
-    # Parse command-line options.
+    bom = generate_bom(options)
+    write_output(bom, options)
+  end
+
+  # Parses command-line options and returns a hash of options.
+  private def parse_options
+    options = {
+      "shard_file"      => "shard.yml",
+      "shard_lock_file" => "shard.lock",
+      "output_file"     => "",
+      "spec_version"    => DEFAULT_VERSION,
+      "output_format"   => DEFAULT_FORMAT,
+    }
+
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
-      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: shard.lock)") { |f| shard_lock_file = f }
-      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: shard.yml)") { |f| shard_file = f }
-      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| output_file = f }
-      parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{supported_versions.join(", ")}, default: #{spec_version})") { |v| spec_version = v }
-      parser.on("--output-format FORMAT", "Output format (options: #{supported_formats.join(", ")}, default: #{output_format})") { |f| output_format = f.downcase }
+      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: shard.lock)") { |f| options["shard_lock_file"] = f }
+      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: shard.yml)") { |f| options["shard_file"] = f }
+      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| options["output_file"] = f }
+      parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| options["spec_version"] = v }
+      parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |f| options["output_format"] = f.downcase }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
       end
     end
 
-    # Validate spec version.
-    unless supported_versions.includes?(spec_version)
-      puts "Error: Unsupported spec version '#{spec_version}'. Supported versions are: #{supported_versions.join(", ")}"
-      return
+    options
+  end
+
+  # Validates the parsed options.
+  private def validate_options(options)
+    unless SUPPORTED_VERSIONS.includes?(options["spec_version"])
+      puts "Error: Unsupported spec version '#{options["spec_version"]}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}"
+      return false
     end
 
-    # Validate output format.
-    unless supported_formats.includes?(output_format)
-      puts "Error: Unsupported output format '#{output_format}'. Supported formats are: #{supported_formats.join(", ")}"
-      return
+    unless SUPPORTED_FORMATS.includes?(options["output_format"])
+      puts "Error: Unsupported output format '#{options["output_format"]}'. Supported formats are: #{SUPPORTED_FORMATS.join(", ")}"
+      return false
     end
 
-    # Check if input files exist.
-    unless File.exists?(shard_file)
-      puts "Error: `#{shard_file}` not found."
-      return
+    true
+  end
+
+  # Validates that required input files exist.
+  private def validate_input_files(options)
+    unless File.exists?(options["shard_file"])
+      puts "Error: `#{options["shard_file"]}` not found."
+      return false
     end
 
-    unless File.exists?(shard_lock_file)
-      puts "Error: `#{shard_lock_file}` not found."
-      return
+    unless File.exists?(options["shard_lock_file"])
+      puts "Error: `#{options["shard_lock_file"]}` not found."
+      return false
     end
 
-    # Parse main component and dependencies.
-    main_component = parse_main_component(shard_file)
-    dependencies = parse_dependencies(shard_lock_file)
+    true
+  end
 
-    # Create BOM.
-    bom = CycloneDX::BOM.new(
-      spec_version: spec_version,
+  # Generates the BOM from input files.
+  private def generate_bom(options)
+    main_component = parse_main_component(options["shard_file"])
+    dependencies = parse_dependencies(options["shard_lock_file"])
+
+    CycloneDX::BOM.new(
+      spec_version: options["spec_version"],
       components: [main_component] + dependencies
     )
+  end
 
-    # Generate output content based on format.
-    output_content = case output_format
-                     when "json"
-                       bom.to_json
-                     when "xml"
-                       bom.to_xml
-                     when "csv"
-                       bom.to_csv
-                     else
-                       "" # Should not happen due to validation above
-                     end
+  # Writes the BOM output to file or stdout.
+  private def write_output(bom, options)
+    output_content = serialize_bom(bom, options["output_format"])
 
-    # Write output to file or stdout.
-    if output_file.empty?
+    if options["output_file"].empty?
       puts output_content
     else
-      File.write(output_file, output_content)
-      puts "SBOM successfully written to #{output_file} in #{output_format.upcase} format."
+      File.write(options["output_file"], output_content)
+      puts "SBOM successfully written to #{options["output_file"]} in #{options["output_format"].upcase} format."
+    end
+  end
+
+  # Serializes the BOM to the specified format.
+  private def serialize_bom(bom, format)
+    case format
+    when "json"
+      bom.to_json
+    when "xml"
+      bom.to_xml
+    when "csv"
+      bom.to_csv
+    else
+      "" # Should not happen due to validation
     end
   end
 
