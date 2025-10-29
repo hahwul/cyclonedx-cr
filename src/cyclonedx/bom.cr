@@ -12,25 +12,24 @@ class CycloneDX::BOM
 
   # Specifies the format of the BOM (always "CycloneDX" for JSON serialization).
   @[JSON::Field(key: "bomFormat")]
-  property bom_format_json : String = "CycloneDX"
-  # The CycloneDX specification version used for JSON serialization.
+  property bom_format : String = "CycloneDX"
+
+  # The CycloneDX specification version.
   @[JSON::Field(key: "specVersion")]
-  property spec_version_json : String
+  property spec_version : String
+
   # The version of the BOM itself (not the spec version), typically 1.
   @[JSON::Field(key: "version")]
-  property version_json : Int32 = 1
+  property bom_version : Int32 = 1
+
   # An array of `CycloneDX::Component` objects included in the BOM.
   property components : Array(Component)
-
-  @spec_version : String
 
   # Initializes a new CycloneDX BOM.
   #
   # @param components [Array(Component)] An array of components to include in the BOM.
   # @param spec_version [String] The CycloneDX specification version (e.g., "1.4", "1.5").
-  def initialize(@components : Array(Component), spec_version : String)
-    @spec_version_json = spec_version
-    @spec_version = spec_version
+  def initialize(@components : Array(Component), @spec_version : String)
   end
 
   # Serializes the BOM to XML format.
@@ -46,8 +45,8 @@ class CycloneDX::BOM
           "serialNumber": "urn:uuid:#{UUID.random}",
         }) do
           xml.element("components") do
-            @components.each do |comp|
-              comp.to_xml(xml)
+            @components.each do |component|
+              component.to_xml(xml)
             end
           end
         end
@@ -62,8 +61,8 @@ class CycloneDX::BOM
   def to_csv
     CSV.build do |csv|
       csv.row "Name", "Version", "PURL", "Type"
-      @components.each do |comp|
-        csv.row comp.name, comp.version, comp.purl, comp.component_type
+      @components.each do |component|
+        csv.row component.name, component.version, component.purl, component.component_type
       end
     end
   end
