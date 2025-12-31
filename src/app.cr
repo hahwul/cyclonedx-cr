@@ -14,6 +14,10 @@ class App
   DEFAULT_SHARD_FILE = "shard.yml"
   DEFAULT_LOCK_FILE  = "shard.lock"
 
+  # Regex patterns for parsing Git URLs
+  private GITHUB_URL_PATTERN = /.*github\.com[\/:]/
+  private GIT_SUFFIX_PATTERN = /\.git$/
+
   # Holds parsed command-line options.
   record Options,
     shard_file : String,
@@ -174,6 +178,6 @@ class App
   # @return [String?] The GitHub repository path (e.g., "owner/repo"), or `nil` if not a GitHub URL.
   private def parse_github_repo_from_git_url(git_url : String) : String?
     return nil unless git_url.includes?("github.com")
-    git_url.sub(/.*github\.com[\/:]/, "").sub(/\.git$/, "")
+    git_url.sub(GITHUB_URL_PATTERN, "").sub(GIT_SUFFIX_PATTERN, "")
   end
 end
