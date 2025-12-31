@@ -10,20 +10,24 @@ require "./component"
 class CycloneDX::BOM
   include JSON::Serializable
 
+  BOM_FORMAT    = "CycloneDX"
+  BOM_VERSION   = 1
+  XML_NAMESPACE = "http://cyclonedx.org/schema/bom"
+
   # Specifies the format of the BOM (always "CycloneDX" for JSON serialization).
   @[JSON::Field(key: "bomFormat")]
-  property bom_format : String = "CycloneDX"
+  getter bom_format : String = BOM_FORMAT
 
   # The CycloneDX specification version.
   @[JSON::Field(key: "specVersion")]
-  property spec_version : String
+  getter spec_version : String
 
   # The version of the BOM itself (not the spec version), typically 1.
   @[JSON::Field(key: "version")]
-  property bom_version : Int32 = 1
+  getter bom_version : Int32 = BOM_VERSION
 
   # An array of `CycloneDX::Component` objects included in the BOM.
-  property components : Array(Component)
+  getter components : Array(Component)
 
   # Initializes a new CycloneDX BOM.
   #
@@ -36,18 +40,16 @@ class CycloneDX::BOM
   # The XML output includes a unique serial number (UUID).
   #
   # @return [String] The BOM in XML format.
-  def to_xml
+  def to_xml : String
     String.build do |str|
       XML.build(str) do |xml|
         xml.element("bom", attributes: {
-          "xmlns":        "http://cyclonedx.org/schema/bom/#{@spec_version}",
-          "version":      "1",
+          "xmlns":        "#{XML_NAMESPACE}/#{@spec_version}",
+          "version":      BOM_VERSION.to_s,
           "serialNumber": "urn:uuid:#{UUID.random}",
         }) do
           xml.element("components") do
-            @components.each do |component|
-              component.to_xml(xml)
-            end
+            @components.each(&.to_xml(xml))
           end
         end
       end
@@ -58,7 +60,7 @@ class CycloneDX::BOM
   # The CSV output includes Name, Version, PURL, and Type for each component.
   #
   # @return [String] The BOM in CSV format.
-  def to_csv
+  def to_csv : String
     CSV.build do |csv|
       csv.row "Name", "Version", "PURL", "Type"
       @components.each do |component|

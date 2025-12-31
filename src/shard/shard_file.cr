@@ -5,8 +5,9 @@ require "yaml"
 # such as its name and version.
 class ShardFile
   include YAML::Serializable
+
   # The name of the project/shard.
-  property name : String
+  getter name : String
   # The version of the project/shard.
-  property version : String
+  getter version : String
 end

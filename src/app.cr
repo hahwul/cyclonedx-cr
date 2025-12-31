@@ -11,6 +11,16 @@ class App
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
   DEFAULT_FORMAT     = "json"
+  DEFAULT_SHARD_FILE = "shard.yml"
+  DEFAULT_LOCK_FILE  = "shard.lock"
+
+  # Holds parsed command-line options.
+  record Options,
+    shard_file : String,
+    shard_lock_file : String,
+    output_file : String,
+    spec_version : String,
+    output_format : String
 
   # Runs the main application logic.
   def run
@@ -22,41 +32,45 @@ class App
     write_output(bom, options)
   end
 
-  # Parses command-line options and returns a hash of options.
-  private def parse_options
-    options = {
-      "shard_file"      => "shard.yml",
-      "shard_lock_file" => "shard.lock",
-      "output_file"     => "",
-      "spec_version"    => DEFAULT_VERSION,
-      "output_format"   => DEFAULT_FORMAT,
-    }
+  # Parses command-line options and returns an Options record.
+  private def parse_options : Options
+    shard_file = DEFAULT_SHARD_FILE
+    shard_lock_file = DEFAULT_LOCK_FILE
+    output_file = ""
+    spec_version = DEFAULT_VERSION
+    output_format = DEFAULT_FORMAT
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
-      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: shard.lock)") { |f| options["shard_lock_file"] = f }
-      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: shard.yml)") { |f| options["shard_file"] = f }
-      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| options["output_file"] = f }
-      parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| options["spec_version"] = v }
-      parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |f| options["output_format"] = f.downcase }
+      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: #{DEFAULT_LOCK_FILE})") { |f| shard_lock_file = f }
+      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: #{DEFAULT_SHARD_FILE})") { |f| shard_file = f }
+      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| output_file = f }
+      parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| spec_version = v }
+      parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |f| output_format = f.downcase }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
       end
     end
 
-    options
+    Options.new(
+      shard_file: shard_file,
+      shard_lock_file: shard_lock_file,
+      output_file: output_file,
+      spec_version: spec_version,
+      output_format: output_format
+    )
   end
 
   # Validates the parsed options.
-  private def validate_options(options)
-    unless SUPPORTED_VERSIONS.includes?(options["spec_version"])
-      puts "Error: Unsupported spec version '#{options["spec_version"]}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}"
+  private def validate_options(options : Options) : Bool
+    unless SUPPORTED_VERSIONS.includes?(options.spec_version)
+      STDERR.puts "Error: Unsupported spec version '#{options.spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}"
       return false
     end
 
-    unless SUPPORTED_FORMATS.includes?(options["output_format"])
-      puts "Error: Unsupported output format '#{options["output_format"]}'. Supported formats are: #{SUPPORTED_FORMATS.join(", ")}"
+    unless SUPPORTED_FORMATS.includes?(options.output_format)
+      STDERR.puts "Error: Unsupported output format '#{options.output_format}'. Supported formats are: #{SUPPORTED_FORMATS.join(", ")}"
       return false
     end
 
@@ -64,14 +78,14 @@ class App
   end
 
   # Validates that required input files exist.
-  private def validate_input_files(options)
-    unless File.exists?(options["shard_file"])
-      puts "Error: `#{options["shard_file"]}` not found."
+  private def validate_input_files(options : Options) : Bool
+    unless File.exists?(options.shard_file)
+      STDERR.puts "Error: `#{options.shard_file}` not found."
       return false
     end
 
-    unless File.exists?(options["shard_lock_file"])
-      puts "Error: `#{options["shard_lock_file"]}` not found."
+    unless File.exists?(options.shard_lock_file)
+      STDERR.puts "Error: `#{options.shard_lock_file}` not found."
       return false
     end
 
@@ -79,39 +93,35 @@ class App
   end
 
   # Generates the BOM from input files.
-  private def generate_bom(options)
-    main_component = parse_main_component(options["shard_file"])
-    dependencies = parse_dependencies(options["shard_lock_file"])
+  private def generate_bom(options : Options) : CycloneDX::BOM
+    main_component = parse_main_component(options.shard_file)
+    dependencies = parse_dependencies(options.shard_lock_file)
 
     CycloneDX::BOM.new(
-      spec_version: options["spec_version"],
+      spec_version: options.spec_version,
       components: [main_component] + dependencies
     )
   end
 
   # Writes the BOM output to file or stdout.
-  private def write_output(bom, options)
-    output_content = serialize_bom(bom, options["output_format"])
+  private def write_output(bom : CycloneDX::BOM, options : Options) : Nil
+    output_content = serialize_bom(bom, options.output_format)
 
-    if options["output_file"].empty?
+    if options.output_file.empty?
       puts output_content
     else
-      File.write(options["output_file"], output_content)
-      puts "SBOM successfully written to #{options["output_file"]} in #{options["output_format"].upcase} format."
+      File.write(options.output_file, output_content)
+      STDERR.puts "SBOM successfully written to #{options.output_file} in #{options.output_format.upcase} format."
     end
   end
 
   # Serializes the BOM to the specified format.
-  private def serialize_bom(bom, format)
+  private def serialize_bom(bom : CycloneDX::BOM, format : String) : String
     case format
-    when "json"
-      bom.to_json
-    when "xml"
-      bom.to_xml
-    when "csv"
-      bom.to_csv
-    else
-      "" # Should not happen due to validation
+    when "json" then bom.to_json
+    when "xml"  then bom.to_xml
+    when "csv"  then bom.to_csv
+    else             "" # Should not happen due to validation
     end
   end
 
@@ -134,34 +144,25 @@ class App
   # @return [Array(CycloneDX::Component)] An array of dependency components.
   private def parse_dependencies(file_path : String) : Array(CycloneDX::Component)
     lock_file = ShardLockFile.from_yaml(File.read(file_path))
-    components = [] of CycloneDX::Component
-    lock_file.shards.each do |name, details|
-      purl = generate_purl(name, details)
-      components << CycloneDX::Component.new(
+    lock_file.shards.map do |name, details|
+      CycloneDX::Component.new(
         name: name,
         version: details.version,
-        purl: purl
+        purl: generate_purl(details)
       )
     end
-    components
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.
   # Currently supports GitHub-based PURLs.
   #
-  # @param name [String] The name of the shard.
   # @param details [ShardLockEntry] The details of the shard from `shard.lock`.
   # @return [String?] The generated PURL, or `nil` if one cannot be determined.
-  private def generate_purl(name : String, details : ShardLockEntry) : String?
-    case
-    when github_repo = details.github
+  private def generate_purl(details : ShardLockEntry) : String?
+    if github_repo = details.github
       "pkg:github/#{github_repo}@#{details.version}"
-    when git_url = details.git
-      if github_repo = parse_github_repo_from_git_url(git_url)
-        "pkg:github/#{github_repo}@#{details.version}"
-      else
-        nil
-      end
+    elsif git_url = details.git
+      parse_github_repo_from_git_url(git_url).try { |repo| "pkg:github/#{repo}@#{details.version}" }
     else
       nil
     end
@@ -172,10 +173,7 @@ class App
   # @param git_url [String] The Git URL.
   # @return [String?] The GitHub repository path (e.g., "owner/repo"), or `nil` if not a GitHub URL.
   private def parse_github_repo_from_git_url(git_url : String) : String?
-    if git_url.includes?("github.com")
-      git_url.sub(/.*github.com\//, "").sub(/\.git$/, "")
-    else
-      nil
-    end
+    return nil unless git_url.includes?("github.com")
+    git_url.sub(/.*github\.com[\/:]/, "").sub(/\.git$/, "")
   end
 end
