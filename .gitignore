@@ -1,3 +1,9 @@
+# Crystal
 bin
 lib
+
+# SBOM
 ./bom.*
+
+# For nix
+result
