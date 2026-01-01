@@ -7,15 +7,17 @@ require "xml"
 class CycloneDX::Component
   include JSON::Serializable
 
+  DEFAULT_TYPE = "library"
+
   # The type of the component (e.g., "library", "application").
   @[JSON::Field(key: "type")]
-  property component_type : String
+  getter component_type : String
   # The name of the component.
-  property name : String
+  getter name : String
   # The version of the component.
-  property version : String
+  getter version : String
   # The Package URL (PURL) of the component, if available.
-  property purl : String?
+  getter purl : String?
 
   # Initializes a new CycloneDX Component.
   #
@@ -23,17 +25,17 @@ class CycloneDX::Component
   # @param version [String] The version of the component.
   # @param component_type [String] The type of the component (default: "library").
   # @param purl [String?] The PURL of the component (default: nil).
-  def initialize(@name : String, @version : String, @component_type = "library", @purl = nil)
+  def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil)
   end
 
   # Serializes the component to XML format.
   #
   # @param builder [XML::Builder] The XML builder instance.
-  def to_xml(builder : XML::Builder)
+  def to_xml(builder : XML::Builder) : Nil
     builder.element("component", attributes: {"type": @component_type}) do
       builder.element("name") { builder.text(@name) }
       builder.element("version") { builder.text(@version) }
-      builder.element("purl") { builder.text(@purl.not_nil!) } if @purl
+      @purl.try { |p| builder.element("purl") { builder.text(p) } }
     end
   end
 end
