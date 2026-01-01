@@ -46,11 +46,11 @@ class App
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
-      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: #{DEFAULT_LOCK_FILE})") { |f| shard_lock_file = f }
-      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: #{DEFAULT_SHARD_FILE})") { |f| shard_file = f }
-      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |f| output_file = f }
+      parser.on("-i FILE", "--input=FILE", "shard.lock file path (default: #{DEFAULT_LOCK_FILE})") { |file| shard_lock_file = file }
+      parser.on("-s FILE", "--shard=FILE", "shard.yml file path (default: #{DEFAULT_SHARD_FILE})") { |file| shard_file = file }
+      parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |file| output_file = file }
       parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| spec_version = v }
-      parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |f| output_format = f.downcase }
+      parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |format| output_format = format.downcase }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
