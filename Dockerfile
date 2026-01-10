@@ -1,5 +1,5 @@
 ##= BUILDER =##
-FROM 84codes/crystal:latest-debian-12 AS builder
+FROM 84codes/crystal:latest-debian-13 AS builder
 
 WORKDIR /cyclonedx-cr
 
