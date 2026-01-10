@@ -21,7 +21,7 @@ RUN shards build --release --no-debug --production && \
 
 ##= RUNNER =##
 # Use Debian 12 runtime to match builder's ABI (avoids ICU/glibc mismatches)
-FROM debian:12-slim
+FROM debian:13-slim
 
 # Install runtime libraries required by the linked binary
 RUN apt-get update && apt-get install -y --no-install-recommends \
