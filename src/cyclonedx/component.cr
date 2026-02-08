@@ -45,10 +45,14 @@ class CycloneDX::Component
   # @param builder [XML::Builder] The XML builder instance.
   def to_xml(builder : XML::Builder) : Nil
     builder.element("component", attributes: {"type": @component_type}) do
-      builder.element("author") { builder.text(@author) } if @author
+      if author = @author
+        builder.element("author") { builder.text(author) }
+      end
       builder.element("name") { builder.text(@name) }
       builder.element("version") { builder.text(@version) }
-      builder.element("description") { builder.text(@description) } if @description
+      if description = @description
+        builder.element("description") { builder.text(description) }
+      end
 
       if licenses_val = @licenses
         builder.element("licenses") do

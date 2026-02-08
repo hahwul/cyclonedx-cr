@@ -51,9 +51,15 @@ module CycloneDX
 
     def to_xml(xml : XML::Builder)
       xml.element("tool") do
-        xml.element("vendor") { xml.text @vendor } if @vendor
-        xml.element("name") { xml.text @name } if @name
-        xml.element("version") { xml.text @version } if @version
+        if vendor = @vendor
+          xml.element("vendor") { xml.text vendor }
+        end
+        if name = @name
+          xml.element("name") { xml.text name }
+        end
+        if version = @version
+          xml.element("version") { xml.text version }
+        end
       end
     end
   end
@@ -70,9 +76,15 @@ module CycloneDX
 
     def to_xml(xml : XML::Builder)
       xml.element("author") do
-        xml.element("name") { xml.text @name } if @name
-        xml.element("email") { xml.text @email } if @email
-        xml.element("phone") { xml.text @phone } if @phone
+        if name = @name
+          xml.element("name") { xml.text name }
+        end
+        if email = @email
+          xml.element("email") { xml.text email }
+        end
+        if phone = @phone
+          xml.element("phone") { xml.text phone }
+        end
       end
     end
   end
