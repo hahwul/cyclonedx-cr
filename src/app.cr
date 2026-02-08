@@ -9,7 +9,7 @@ require "./shard/shard_lock_file"
 # Main application class for generating CycloneDX SBOMs from Crystal Shard files.
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
-  VERSION = "1.0.2"
+  VERSION            = "1.0.2"
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
