@@ -10,4 +10,11 @@ class ShardFile
   getter name : String
   # The version of the project/shard.
   getter version : String
+
+  # Optional fields
+  getter description : String?
+  getter authors : Array(String)?
+  getter license : String?
+  getter homepage : String?
+  getter repository : String?
 end
