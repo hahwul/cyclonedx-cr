@@ -1,12 +1,15 @@
 require "option_parser"
 require "./cyclonedx/bom"
 require "./cyclonedx/component"
+require "./cyclonedx/models"
+require "./cyclonedx/metadata"
 require "./shard/shard_file"
 require "./shard/shard_lock_file"
 
 # Main application class for generating CycloneDX SBOMs from Crystal Shard files.
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
+  VERSION = "1.0.2"
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
@@ -101,9 +104,13 @@ class App
     main_component = parse_main_component(options.shard_file)
     dependencies = parse_dependencies(options.shard_lock_file)
 
+    tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
+    metadata = CycloneDX::Metadata.new(component: main_component, tools: [tool])
+
     CycloneDX::BOM.new(
       spec_version: options.spec_version,
-      components: [main_component] + dependencies
+      metadata: metadata,
+      components: dependencies
     )
   end
 
@@ -135,10 +142,30 @@ class App
   # @return [CycloneDX::Component] The main application component.
   private def parse_main_component(file_path : String) : CycloneDX::Component
     shard = ShardFile.from_yaml(File.read(file_path))
+
+    licenses = [] of CycloneDX::License
+    if license_name = shard.license
+      licenses << CycloneDX::License.new(name: license_name)
+    end
+
+    external_refs = [] of CycloneDX::ExternalReference
+    if homepage = shard.homepage
+      external_refs << CycloneDX::ExternalReference.new(ref_type: "website", url: homepage)
+    end
+    if repository = shard.repository
+      external_refs << CycloneDX::ExternalReference.new(ref_type: "vcs", url: repository)
+    end
+
+    author = shard.authors.try(&.first?)
+
     CycloneDX::Component.new(
       component_type: "application",
       name: shard.name,
-      version: shard.version
+      version: shard.version,
+      description: shard.description,
+      author: author,
+      licenses: licenses.empty? ? nil : licenses,
+      external_references: external_refs.empty? ? nil : external_refs
     )
   end
 

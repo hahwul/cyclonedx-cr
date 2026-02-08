@@ -3,6 +3,7 @@ require "xml"
 require "csv"
 require "uuid"
 require "./component"
+require "./metadata"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -26,6 +27,9 @@ class CycloneDX::BOM
   @[JSON::Field(key: "version")]
   getter bom_version : Int32 = BOM_VERSION
 
+  # Metadata about the BOM.
+  getter metadata : Metadata?
+
   # An array of `CycloneDX::Component` objects included in the BOM.
   getter components : Array(Component)
 
@@ -33,7 +37,8 @@ class CycloneDX::BOM
   #
   # @param components [Array(Component)] An array of components to include in the BOM.
   # @param spec_version [String] The CycloneDX specification version (e.g., "1.4", "1.5").
-  def initialize(@components : Array(Component), @spec_version : String)
+  # @param metadata [Metadata?] The metadata for the BOM.
+  def initialize(@components : Array(Component), @spec_version : String, @metadata : Metadata? = nil)
   end
 
   # Serializes the BOM to XML format.
@@ -48,6 +53,7 @@ class CycloneDX::BOM
           "version":      BOM_VERSION.to_s,
           "serialNumber": "urn:uuid:#{UUID.random}",
         }) do
+          @metadata.try(&.to_xml(xml))
           xml.element("components") do
             @components.each(&.to_xml(xml))
           end
