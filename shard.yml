@@ -8,6 +8,9 @@ targets:
   cyclonedx-cr:
     main: src/main.cr
 
+executables:
+  - cyclonedx-cr
+
 crystal: 1.6.2
 
 license: MIT
