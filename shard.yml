@@ -9,7 +9,7 @@ targets:
     main: src/main.cr
 
 executables:
-  - cyclonedx-cr.cr
+  - cyclonedx-cr
 
 crystal: 1.6.2
 
