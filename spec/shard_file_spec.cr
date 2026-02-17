@@ -5,16 +5,16 @@ describe ShardFile do
   describe ".from_yaml" do
     it "parses a shard.yml with all fields" do
       yaml = <<-YAML
-      name: my-shard
-      version: 0.1.0
-      description: A sample shard
-      authors:
-        - Alice <alice@example.com>
-        - Bob <bob@example.com>
-      license: MIT
-      homepage: https://example.com
-      repository: https://github.com/example/my-shard
-      YAML
+        name: my-shard
+        version: 0.1.0
+        description: A sample shard
+        authors:
+          - Alice <alice@example.com>
+          - Bob <bob@example.com>
+        license: MIT
+        homepage: https://example.com
+        repository: https://github.com/example/my-shard
+        YAML
 
       shard = ShardFile.from_yaml(yaml)
 
@@ -29,9 +29,9 @@ describe ShardFile do
 
     it "parses a shard.yml with minimal fields" do
       yaml = <<-YAML
-      name: minimal-shard
-      version: 1.0.0
-      YAML
+        name: minimal-shard
+        version: 1.0.0
+        YAML
 
       shard = ShardFile.from_yaml(yaml)
 
@@ -46,8 +46,8 @@ describe ShardFile do
 
     it "raises an error when required fields are missing" do
       yaml = <<-YAML
-      description: Missing name and version
-      YAML
+        description: Missing name and version
+        YAML
 
       expect_raises(YAML::ParseException) do
         ShardFile.from_yaml(yaml)

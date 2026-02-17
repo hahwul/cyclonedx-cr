@@ -10,7 +10,7 @@ describe ShardLockFile do
           ameba:
             git: https://github.com/crystal-ameba/ameba.git
             version: 1.6.4
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -29,7 +29,7 @@ describe ShardLockFile do
           my_shard:
             github: owner/repo
             version: 0.1.0
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -48,7 +48,7 @@ describe ShardLockFile do
           local_shard:
             path: /path/to/shard
             version: 0.0.1
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -64,7 +64,7 @@ describe ShardLockFile do
       yaml = <<-YAML
         version: 2.0
         shards: {}
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.should be_empty
@@ -76,7 +76,7 @@ describe ShardLockFile do
           ameba:
             git: https://github.com/crystal-ameba/ameba.git
             version: 1.6.4
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -91,7 +91,7 @@ describe ShardLockFile do
             git: https://github.com/crystal-ameba/ameba.git
             version: 1.6.4
             extra_entry_field: "ignored"
-      YAML
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -99,12 +99,12 @@ describe ShardLockFile do
     end
     it "parses a shard.lock file with git dependency" do
       yaml = <<-YAML
-    version: 2.0
-    shards:
-      ameba:
-        git: https://github.com/crystal-ameba/ameba.git
-        version: 1.6.4
-    YAML
+        version: 2.0
+        shards:
+          ameba:
+            git: https://github.com/crystal-ameba/ameba.git
+            version: 1.6.4
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -118,12 +118,12 @@ describe ShardLockFile do
 
     it "parses a shard.lock file with github dependency" do
       yaml = <<-YAML
-    version: 2.0
-    shards:
-      my_shard:
-        github: owner/repo
-        version: 0.1.0
-    YAML
+        version: 2.0
+        shards:
+          my_shard:
+            github: owner/repo
+            version: 0.1.0
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -137,12 +137,12 @@ describe ShardLockFile do
 
     it "parses a shard.lock file with path dependency" do
       yaml = <<-YAML
-    version: 2.0
-    shards:
-      local_shard:
-        path: /path/to/shard
-        version: 0.0.1
-    YAML
+        version: 2.0
+        shards:
+          local_shard:
+            path: /path/to/shard
+            version: 0.0.1
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)
@@ -156,15 +156,15 @@ describe ShardLockFile do
 
     it "parses a shard.lock file with multiple dependencies" do
       yaml = <<-YAML
-    version: 2.0
-    shards:
-      ameba:
-        git: https://github.com/crystal-ameba/ameba.git
-        version: 1.6.4
-      my_shard:
-        github: owner/repo
-        version: 0.1.0
-    YAML
+        version: 2.0
+        shards:
+          ameba:
+            git: https://github.com/crystal-ameba/ameba.git
+            version: 1.6.4
+          my_shard:
+            github: owner/repo
+            version: 0.1.0
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(2)
@@ -175,9 +175,9 @@ describe ShardLockFile do
 
     it "handles empty shards list" do
       yaml = <<-YAML
-    version: 2.0
-    shards: {}
-    YAML
+        version: 2.0
+        shards: {}
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.empty?.should be_true
@@ -187,12 +187,12 @@ describe ShardLockFile do
       # YAML::Serializable ignores extra fields by default unless strict: true is set.
       # This test ensures that parsing succeeds despite the 'version' field not being in the model.
       yaml = <<-YAML
-    version: 2.0
-    shards:
-      ameba:
-        git: https://github.com/crystal-ameba/ameba.git
-        version: 1.6.4
-    YAML
+        version: 2.0
+        shards:
+          ameba:
+            git: https://github.com/crystal-ameba/ameba.git
+            version: 1.6.4
+        YAML
 
       lock_file = ShardLockFile.from_yaml(yaml)
       lock_file.shards.size.should eq(1)

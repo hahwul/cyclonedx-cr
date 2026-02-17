@@ -194,8 +194,6 @@ class App
       "pkg:github/#{github_repo}@#{details.version}"
     elsif git_url = details.git
       parse_github_repo_from_git_url(git_url).try { |repo| "pkg:github/#{repo}@#{details.version}" }
-    else
-      nil
     end
   end
 
@@ -204,7 +202,7 @@ class App
   # @param git_url [String] The Git URL.
   # @return [String?] The GitHub repository path (e.g., "owner/repo"), or `nil` if not a GitHub URL.
   private def parse_github_repo_from_git_url(git_url : String) : String?
-    return nil unless git_url.includes?("github.com")
+    return unless git_url.includes?("github.com")
     git_url.sub(GITHUB_URL_PATTERN, "").sub(GIT_SUFFIX_PATTERN, "")
   end
 end

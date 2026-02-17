@@ -85,39 +85,39 @@ describe CycloneDX::Component do
         external_references: refs
       )
 
-      xml = XML.build(indent: "  ") do |xml|
+      xml_content = XML.build(indent: "  ") do |xml|
         component.to_xml(xml)
       end
 
-      xml.should contain %(<component type="library">)
-      xml.should contain %(<name>xml-lib</name>)
-      xml.should contain %(<version>4.0.0</version>)
-      xml.should contain %(<purl>pkg:maven/xml-lib@4.0.0</purl>)
-      xml.should contain %(<description>XML lib</description>)
-      xml.should contain %(<author>Xml Author</author>)
-      xml.should contain %(<licenses>)
-      xml.should contain %(<license>)
-      xml.should contain %(<name>Apache-2.0</name>)
-      xml.should contain %(<externalReferences>)
-      xml.should contain %(<reference type="vcs">)
-      xml.should contain %(<url>https://github.com/example/xml-lib</url>)
+      xml_content.should contain %(<component type="library">)
+      xml_content.should contain %(<name>xml-lib</name>)
+      xml_content.should contain %(<version>4.0.0</version>)
+      xml_content.should contain %(<purl>pkg:maven/xml-lib@4.0.0</purl>)
+      xml_content.should contain %(<description>XML lib</description>)
+      xml_content.should contain %(<author>Xml Author</author>)
+      xml_content.should contain %(<licenses>)
+      xml_content.should contain %(<license>)
+      xml_content.should contain %(<name>Apache-2.0</name>)
+      xml_content.should contain %(<externalReferences>)
+      xml_content.should contain %(<reference type="vcs">)
+      xml_content.should contain %(<url>https://github.com/example/xml-lib</url>)
     end
 
     it "handles optional fields being nil in XML" do
       component = CycloneDX::Component.new(name: "minimal", version: "0.1.0")
 
-      xml = XML.build(indent: "  ") do |xml|
+      xml_content = XML.build(indent: "  ") do |xml|
         component.to_xml(xml)
       end
 
-      xml.should contain %(<component type="library">)
-      xml.should contain %(<name>minimal</name>)
-      xml.should contain %(<version>0.1.0</version>)
-      xml.should_not contain %(<purl>)
-      xml.should_not contain %(<description>)
-      xml.should_not contain %(<author>)
-      xml.should_not contain %(<licenses>)
-      xml.should_not contain %(<externalReferences>)
+      xml_content.should contain %(<component type="library">)
+      xml_content.should contain %(<name>minimal</name>)
+      xml_content.should contain %(<version>0.1.0</version>)
+      xml_content.should_not contain %(<purl>)
+      xml_content.should_not contain %(<description>)
+      xml_content.should_not contain %(<author>)
+      xml_content.should_not contain %(<licenses>)
+      xml_content.should_not contain %(<externalReferences>)
     end
   end
 end
