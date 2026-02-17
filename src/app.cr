@@ -141,7 +141,17 @@ class App
   # @param file_path [String] The path to the `shard.yml` file.
   # @return [CycloneDX::Component] The main application component.
   private def parse_main_component(file_path : String) : CycloneDX::Component
-    shard = ShardFile.from_yaml(File.read(file_path))
+    begin
+      shard = ShardFile.from_yaml(File.read(file_path))
+    rescue ex : YAML::ParseException
+      STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
+      STDERR.puts ex.message
+      exit(1)
+    rescue ex : File::Error
+      STDERR.puts "Error: Could not read `#{file_path}`."
+      STDERR.puts ex.message
+      exit(1)
+    end
 
     licenses = [] of CycloneDX::License
     if license_name = shard.license
@@ -174,7 +184,18 @@ class App
   # @param file_path [String] The path to the `shard.lock` file.
   # @return [Array(CycloneDX::Component)] An array of dependency components.
   private def parse_dependencies(file_path : String) : Array(CycloneDX::Component)
-    lock_file = ShardLockFile.from_yaml(File.read(file_path))
+    begin
+      lock_file = ShardLockFile.from_yaml(File.read(file_path))
+    rescue ex : YAML::ParseException
+      STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
+      STDERR.puts ex.message
+      exit(1)
+    rescue ex : File::Error
+      STDERR.puts "Error: Could not read `#{file_path}`."
+      STDERR.puts ex.message
+      exit(1)
+    end
+
     lock_file.shards.map do |name, details|
       CycloneDX::Component.new(
         name: name,
