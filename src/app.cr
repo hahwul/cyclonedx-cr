@@ -32,8 +32,8 @@ class App
   # Runs the main application logic.
   def run
     options = parse_options
-    return unless validate_options(options)
-    return unless validate_input_files(options)
+    exit(1) unless validate_options(options)
+    exit(1) unless validate_input_files(options)
 
     bom = generate_bom(options)
     write_output(bom, options)
