@@ -27,6 +27,10 @@ class CycloneDX::BOM
   @[JSON::Field(key: "version")]
   getter bom_version : Int32 = BOM_VERSION
 
+  # The unique serial number of the BOM.
+  @[JSON::Field(key: "serialNumber")]
+  getter serial_number : String = "urn:uuid:#{UUID.random}"
+
   # Metadata about the BOM.
   getter metadata : Metadata?
 
@@ -51,7 +55,7 @@ class CycloneDX::BOM
         xml.element("bom", attributes: {
           "xmlns":        "#{XML_NAMESPACE}/#{@spec_version}",
           "version":      BOM_VERSION.to_s,
-          "serialNumber": "urn:uuid:#{UUID.random}",
+          "serialNumber": @serial_number,
         }) do
           @metadata.try(&.to_xml(xml))
           xml.element("components") do
