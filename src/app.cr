@@ -142,7 +142,7 @@ class App
   # @return [CycloneDX::Component] The main application component.
   private def parse_main_component(file_path : String) : CycloneDX::Component
     begin
-      shard = File.open(file_path) { |f| ShardFile.from_yaml(f) }
+      shard = File.open(file_path) { |file| ShardFile.from_yaml(file) }
     rescue ex : YAML::ParseException
       STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
       STDERR.puts ex.message
@@ -185,7 +185,7 @@ class App
   # @return [Array(CycloneDX::Component)] An array of dependency components.
   private def parse_dependencies(file_path : String) : Array(CycloneDX::Component)
     begin
-      lock_file = File.open(file_path) { |f| ShardLockFile.from_yaml(f) }
+      lock_file = File.open(file_path) { |file| ShardLockFile.from_yaml(file) }
     rescue ex : YAML::ParseException
       STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
       STDERR.puts ex.message
