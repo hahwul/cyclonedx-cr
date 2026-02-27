@@ -17,6 +17,11 @@ class App
   DEFAULT_SHARD_FILE = "shard.yml"
   DEFAULT_LOCK_FILE  = "shard.lock"
 
+  COMPONENT_TYPE_APPLICATION = "application"
+  REF_TYPE_WEBSITE           = "website"
+  REF_TYPE_VCS               = "vcs"
+  PURL_GITHUB_PREFIX         = "pkg:github/"
+
   # Regex patterns for parsing Git URLs
   private GITHUB_URL_PATTERN = /.*github\.com[\/:]/
   private GIT_SUFFIX_PATTERN = /\.git$/
@@ -86,12 +91,12 @@ class App
 
   # Validates that required input files exist.
   private def validate_input_files(options : Options) : Bool
-    unless File.exists?(options.shard_file)
+    unless File.file?(options.shard_file)
       STDERR.puts "Error: `#{options.shard_file}` not found."
       return false
     end
 
-    unless File.exists?(options.shard_lock_file)
+    unless File.file?(options.shard_lock_file)
       STDERR.puts "Error: `#{options.shard_lock_file}` not found."
       return false
     end
@@ -132,69 +137,51 @@ class App
     when "json" then bom.to_json
     when "xml"  then bom.to_xml
     when "csv"  then bom.to_csv
-    else             "" # Should not happen due to validation
+    else             raise "BUG: Unsupported format '#{format}'"
     end
   end
 
+  # Reads and parses a YAML file into the specified type.
+  private def read_yaml_file(file_path : String, type : T.class) : T forall T
+    File.open(file_path) { |file| T.from_yaml(file) }
+  rescue ex : YAML::ParseException
+    STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
+    STDERR.puts ex.message
+    exit(1)
+  rescue ex : File::Error
+    STDERR.puts "Error: Could not read `#{file_path}`."
+    STDERR.puts ex.message
+    exit(1)
+  end
+
   # Parses the main component information from `shard.yml`.
-  #
-  # @param file_path [String] The path to the `shard.yml` file.
-  # @return [CycloneDX::Component] The main application component.
   private def parse_main_component(file_path : String) : CycloneDX::Component
-    begin
-      shard = File.open(file_path) { |file| ShardFile.from_yaml(file) }
-    rescue ex : YAML::ParseException
-      STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
-      STDERR.puts ex.message
-      exit(1)
-    rescue ex : File::Error
-      STDERR.puts "Error: Could not read `#{file_path}`."
-      STDERR.puts ex.message
-      exit(1)
-    end
+    shard = read_yaml_file(file_path, ShardFile)
 
-    licenses = [] of CycloneDX::License
-    if license_name = shard.license
-      licenses << CycloneDX::License.new(name: license_name)
-    end
+    licenses = shard.license.try { |l| [CycloneDX::License.new(name: l)] }
 
-    external_refs = [] of CycloneDX::ExternalReference
-    if homepage = shard.homepage
-      external_refs << CycloneDX::ExternalReference.new(ref_type: "website", url: homepage)
-    end
-    if repository = shard.repository
-      external_refs << CycloneDX::ExternalReference.new(ref_type: "vcs", url: repository)
-    end
+    external_refs = [
+      shard.homepage.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_WEBSITE, url: url) },
+      shard.repository.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_VCS, url: url) },
+    ].compact
+    external_refs = nil if external_refs.empty?
 
     author = shard.authors.try(&.first?)
 
     CycloneDX::Component.new(
-      component_type: "application",
+      component_type: COMPONENT_TYPE_APPLICATION,
       name: shard.name,
       version: shard.version,
       description: shard.description,
       author: author,
-      licenses: licenses.empty? ? nil : licenses,
-      external_references: external_refs.empty? ? nil : external_refs
+      licenses: licenses,
+      external_references: external_refs
     )
   end
 
   # Parses dependency components from `shard.lock`.
-  #
-  # @param file_path [String] The path to the `shard.lock` file.
-  # @return [Array(CycloneDX::Component)] An array of dependency components.
   private def parse_dependencies(file_path : String) : Array(CycloneDX::Component)
-    begin
-      lock_file = File.open(file_path) { |file| ShardLockFile.from_yaml(file) }
-    rescue ex : YAML::ParseException
-      STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
-      STDERR.puts ex.message
-      exit(1)
-    rescue ex : File::Error
-      STDERR.puts "Error: Could not read `#{file_path}`."
-      STDERR.puts ex.message
-      exit(1)
-    end
+    lock_file = read_yaml_file(file_path, ShardLockFile)
 
     lock_file.shards.map do |name, details|
       CycloneDX::Component.new(
@@ -212,9 +199,9 @@ class App
   # @return [String?] The generated PURL, or `nil` if one cannot be determined.
   private def generate_purl(details : ShardLockEntry) : String?
     if github_repo = details.github
-      "pkg:github/#{github_repo}@#{details.version}"
+      "#{PURL_GITHUB_PREFIX}#{github_repo}@#{details.version}"
     elsif git_url = details.git
-      parse_github_repo_from_git_url(git_url).try { |repo| "pkg:github/#{repo}@#{details.version}" }
+      parse_github_repo_from_git_url(git_url).try { |repo| "#{PURL_GITHUB_PREFIX}#{repo}@#{details.version}" }
     end
   end
 

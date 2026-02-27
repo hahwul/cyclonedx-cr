@@ -43,28 +43,28 @@ class CycloneDX::Component
   # Serializes the component to XML format.
   #
   # @param builder [XML::Builder] The XML builder instance.
-  def to_xml(builder : XML::Builder) : Nil
-    builder.element("component", attributes: {"type": @component_type}) do
+  def to_xml(xml : XML::Builder) : Nil
+    xml.element("component", attributes: {"type": @component_type}) do
       if author = @author
-        builder.element("author") { builder.text(author) }
+        xml.element("author") { xml.text(author) }
       end
-      builder.element("name") { builder.text(@name) }
-      builder.element("version") { builder.text(@version) }
+      xml.element("name") { xml.text(@name) }
+      xml.element("version") { xml.text(@version) }
       if description = @description
-        builder.element("description") { builder.text(description) }
+        xml.element("description") { xml.text(description) }
       end
 
       if licenses_val = @licenses
-        builder.element("licenses") do
-          licenses_val.each(&.to_xml(builder))
+        xml.element("licenses") do
+          licenses_val.each(&.to_xml(xml))
         end
       end
 
-      @purl.try { |purl| builder.element("purl") { builder.text(purl) } }
+      @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
 
       if external_refs_val = @external_references
-        builder.element("externalReferences") do
-          external_refs_val.each(&.to_xml(builder))
+        xml.element("externalReferences") do
+          external_refs_val.each(&.to_xml(xml))
         end
       end
     end
