@@ -4,6 +4,7 @@ require "csv"
 require "uuid"
 require "./component"
 require "./metadata"
+require "./models"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -37,18 +38,15 @@ class CycloneDX::BOM
   # An array of `CycloneDX::Component` objects included in the BOM.
   getter components : Array(Component)
 
+  # An array of `CycloneDX::Dependency` objects describing component relationships.
+  getter dependencies : Array(Dependency)?
+
   # Initializes a new CycloneDX BOM.
-  #
-  # @param components [Array(Component)] An array of components to include in the BOM.
-  # @param spec_version [String] The CycloneDX specification version (e.g., "1.4", "1.5").
-  # @param metadata [Metadata?] The metadata for the BOM.
-  def initialize(@components : Array(Component), @spec_version : String, @metadata : Metadata? = nil)
+  def initialize(@components : Array(Component), @spec_version : String,
+                 @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil)
   end
 
   # Serializes the BOM to XML format.
-  # The XML output includes a unique serial number (UUID).
-  #
-  # @return [String] The BOM in XML format.
   def to_xml : String
     String.build do |str|
       XML.build(str) do |xml|
@@ -61,15 +59,17 @@ class CycloneDX::BOM
           xml.element("components") do
             @components.each(&.to_xml(xml))
           end
+          if deps = @dependencies
+            xml.element("dependencies") do
+              deps.each(&.to_xml(xml))
+            end
+          end
         end
       end
     end
   end
 
   # Serializes the BOM to CSV format.
-  # The CSV output includes Name, Version, PURL, and Type for each component.
-  #
-  # @return [String] The BOM in CSV format.
   def to_csv : String
     CSV.build do |csv|
       csv.row "Name", "Version", "PURL", "Type"

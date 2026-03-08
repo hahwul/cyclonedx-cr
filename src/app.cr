@@ -22,6 +22,9 @@ class App
   REF_TYPE_VCS               = "vcs"
   PURL_GITHUB_PREFIX         = "pkg:github/"
 
+  SCOPE_REQUIRED = "required"
+  SCOPE_OPTIONAL = "optional"
+
   # Regex patterns for parsing Git URLs
   private GITHUB_URL_PATTERN = /.*github\.com[\/:]/
   private GIT_SUFFIX_PATTERN = /\.git$/
@@ -106,16 +109,23 @@ class App
 
   # Generates the BOM from input files.
   private def generate_bom(options : Options) : CycloneDX::BOM
-    main_component = parse_main_component(options.shard_file)
-    dependencies = parse_dependencies(options.shard_lock_file)
+    shard = read_yaml_file(options.shard_file, ShardFile)
+    main_component = parse_main_component(shard)
+    dev_dep_names = shard.dev_dependency_names
+    dependencies = parse_dependencies(options.shard_lock_file, dev_dep_names)
 
     tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
-    metadata = CycloneDX::Metadata.new(component: main_component, tools: [tool])
+    timestamp = Time.utc.to_rfc3339
+    metadata = CycloneDX::Metadata.new(component: main_component, tools: [tool], timestamp: timestamp)
+
+    # Build dependency graph
+    dep_graph = build_dependency_graph(main_component, dependencies)
 
     CycloneDX::BOM.new(
       spec_version: options.spec_version,
       metadata: metadata,
-      components: dependencies
+      components: dependencies,
+      dependencies: dep_graph
     )
   end
 
@@ -154,10 +164,13 @@ class App
     exit(1)
   end
 
-  # Parses the main component information from `shard.yml`.
-  private def parse_main_component(file_path : String) : CycloneDX::Component
-    shard = read_yaml_file(file_path, ShardFile)
+  # Generates a bom-ref string for a component.
+  private def generate_bom_ref(name : String, version : String) : String
+    "#{name}@#{version}"
+  end
 
+  # Parses the main component information from a parsed ShardFile.
+  private def parse_main_component(shard : ShardFile) : CycloneDX::Component
     licenses = shard.license.try { |l| [CycloneDX::License.new(name: l)] }
 
     external_refs = [
@@ -175,28 +188,54 @@ class App
       description: shard.description,
       author: author,
       licenses: licenses,
-      external_references: external_refs
+      external_references: external_refs,
+      bom_ref: generate_bom_ref(shard.name, shard.version)
     )
   end
 
   # Parses dependency components from `shard.lock`.
-  private def parse_dependencies(file_path : String) : Array(CycloneDX::Component)
+  private def parse_dependencies(file_path : String, dev_dep_names : Set(String)) : Array(CycloneDX::Component)
     lock_file = read_yaml_file(file_path, ShardLockFile)
 
     lock_file.shards.map do |name, details|
+      scope = dev_dep_names.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED
+
       CycloneDX::Component.new(
         name: name,
         version: details.version,
-        purl: generate_purl(details)
+        purl: generate_purl(details),
+        bom_ref: generate_bom_ref(name, details.version),
+        scope: scope
       )
     end
   end
 
+  # Builds the dependency graph for the BOM.
+  # The main component depends on all listed dependencies.
+  # Each dependency has an empty dependsOn list (transitive deps not available from shard.lock).
+  private def build_dependency_graph(main_component : CycloneDX::Component,
+                                     dependencies : Array(CycloneDX::Component)) : Array(CycloneDX::Dependency)
+    dep_refs = dependencies.compact_map(&.bom_ref)
+
+    graph = [] of CycloneDX::Dependency
+
+    # Main component depends on all dependencies
+    if main_ref = main_component.bom_ref
+      graph << CycloneDX::Dependency.new(ref: main_ref, depends_on: dep_refs)
+    end
+
+    # Each dependency listed with empty dependsOn
+    dependencies.each do |dep|
+      if ref = dep.bom_ref
+        graph << CycloneDX::Dependency.new(ref: ref)
+      end
+    end
+
+    graph
+  end
+
   # Generates a Package URL (PURL) for a given shard based on its details.
   # Currently supports GitHub-based PURLs.
-  #
-  # @param details [ShardLockEntry] The details of the shard from `shard.lock`.
-  # @return [String?] The generated PURL, or `nil` if one cannot be determined.
   private def generate_purl(details : ShardLockEntry) : String?
     if github_repo = details.github
       "#{PURL_GITHUB_PREFIX}#{github_repo}@#{details.version}"
@@ -206,9 +245,6 @@ class App
   end
 
   # Extracts the GitHub repository path from a Git URL.
-  #
-  # @param git_url [String] The Git URL.
-  # @return [String?] The GitHub repository path (e.g., "owner/repo"), or `nil` if not a GitHub URL.
   private def parse_github_repo_from_git_url(git_url : String) : String?
     return unless git_url.includes?("github.com")
     git_url.sub(GITHUB_URL_PATTERN, "").sub(GIT_SUFFIX_PATTERN, "")

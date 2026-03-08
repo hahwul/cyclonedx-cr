@@ -13,11 +13,15 @@ describe CycloneDX::Component do
       component.author.should be_nil
       component.licenses.should be_nil
       component.external_references.should be_nil
+      component.bom_ref.should be_nil
+      component.scope.should be_nil
+      component.hashes.should be_nil
     end
 
     it "initializes with all arguments" do
       licenses = [CycloneDX::License.new(name: "MIT")]
       refs = [CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")]
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
       component = CycloneDX::Component.new(
         name: "my-app",
         version: "2.0.0",
@@ -26,7 +30,10 @@ describe CycloneDX::Component do
         description: "A test app",
         author: "John Doe",
         licenses: licenses,
-        external_references: refs
+        external_references: refs,
+        bom_ref: "my-app@2.0.0",
+        scope: "required",
+        hashes: hashes
       )
 
       component.name.should eq "my-app"
@@ -37,6 +44,9 @@ describe CycloneDX::Component do
       component.author.should eq "John Doe"
       component.licenses.should eq licenses
       component.external_references.should eq refs
+      component.bom_ref.should eq "my-app@2.0.0"
+      component.scope.should eq "required"
+      component.hashes.should eq hashes
     end
   end
 
@@ -52,16 +62,20 @@ describe CycloneDX::Component do
         description: "JSON lib",
         author: "Jane Doe",
         licenses: licenses,
-        external_references: refs
+        external_references: refs,
+        bom_ref: "json-lib@3.0.0",
+        scope: "required"
       )
 
       json = component.to_json
+      json.should contain %("bom-ref":"json-lib@3.0.0")
       json.should contain %("type":"library")
       json.should contain %("name":"json-lib")
       json.should contain %("version":"3.0.0")
       json.should contain %("purl":"pkg:npm/json-lib@3.0.0")
       json.should contain %("description":"JSON lib")
       json.should contain %("author":"Jane Doe")
+      json.should contain %("scope":"required")
       json.should contain %("licenses")
       json.should contain %("MIT")
       json.should contain %("externalReferences")
@@ -74,6 +88,7 @@ describe CycloneDX::Component do
     it "serializes to XML correctly" do
       licenses = [CycloneDX::License.new(name: "Apache-2.0")]
       refs = [CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/example/xml-lib")]
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
       component = CycloneDX::Component.new(
         name: "xml-lib",
         version: "4.0.0",
@@ -82,19 +97,25 @@ describe CycloneDX::Component do
         description: "XML lib",
         author: "Xml Author",
         licenses: licenses,
-        external_references: refs
+        external_references: refs,
+        bom_ref: "xml-lib@4.0.0",
+        scope: "required",
+        hashes: hashes
       )
 
       xml_content = XML.build(indent: "  ") do |xml|
         component.to_xml(xml)
       end
 
-      xml_content.should contain %(<component type="library">)
+      xml_content.should contain %(<component type="library" bom-ref="xml-lib@4.0.0">)
       xml_content.should contain %(<name>xml-lib</name>)
       xml_content.should contain %(<version>4.0.0</version>)
       xml_content.should contain %(<purl>pkg:maven/xml-lib@4.0.0</purl>)
       xml_content.should contain %(<description>XML lib</description>)
       xml_content.should contain %(<author>Xml Author</author>)
+      xml_content.should contain %(<scope>required</scope>)
+      xml_content.should contain %(<hashes>)
+      xml_content.should contain %(<hash alg="SHA-256">abc123</hash>)
       xml_content.should contain %(<licenses>)
       xml_content.should contain %(<license>)
       xml_content.should contain %(<name>Apache-2.0</name>)
@@ -118,6 +139,9 @@ describe CycloneDX::Component do
       xml_content.should_not contain %(<author>)
       xml_content.should_not contain %(<licenses>)
       xml_content.should_not contain %(<externalReferences>)
+      xml_content.should_not contain %(bom-ref)
+      xml_content.should_not contain %(<scope>)
+      xml_content.should_not contain %(<hashes>)
     end
   end
 end

@@ -7,6 +7,7 @@ describe CycloneDX::License do
       license = CycloneDX::License.new(id: "MIT")
       license.id.should eq("MIT")
       license.name.should be_nil
+      license.url.should be_nil
     end
 
     it "can be initialized with a name" do
@@ -25,6 +26,13 @@ describe CycloneDX::License do
       license = CycloneDX::License.new
       license.id.should be_nil
       license.name.should be_nil
+      license.url.should be_nil
+    end
+
+    it "can be initialized with a url" do
+      license = CycloneDX::License.new(id: "MIT", url: "https://opensource.org/licenses/MIT")
+      license.id.should eq("MIT")
+      license.url.should eq("https://opensource.org/licenses/MIT")
     end
   end
 
@@ -48,6 +56,12 @@ describe CycloneDX::License do
       json = license.to_json
       json.should contain(%("id":"MIT"))
       json.should contain(%("name":"MIT License"))
+    end
+
+    it "serializes url to JSON" do
+      license = CycloneDX::License.new(id: "MIT", url: "https://opensource.org/licenses/MIT")
+      json = license.to_json
+      json.should contain(%("url":"https://opensource.org/licenses/MIT"))
     end
   end
 
@@ -89,6 +103,162 @@ describe CycloneDX::License do
       xml_str.should contain("<license/>")
       xml_str.should_not contain("<id>")
       xml_str.should_not contain("<name>")
+    end
+
+    it "includes url in XML" do
+      license = CycloneDX::License.new(id: "MIT", url: "https://opensource.org/licenses/MIT")
+      xml_str = XML.build(indent: "  ") do |xml|
+        license.to_xml(xml)
+      end
+      xml_str.should contain("<url>https://opensource.org/licenses/MIT</url>")
+    end
+  end
+end
+
+describe CycloneDX::Hash do
+  describe "#initialize" do
+    it "initializes with algorithm and content" do
+      hash = CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")
+      hash.algorithm.should eq("SHA-256")
+      hash.content.should eq("abc123")
+    end
+  end
+
+  describe "#to_json" do
+    it "serializes to JSON correctly" do
+      hash = CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")
+      json = hash.to_json
+      json.should contain(%("alg":"SHA-256"))
+      json.should contain(%("content":"abc123"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes to XML correctly" do
+      hash = CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")
+      xml_str = XML.build(indent: "  ") do |xml|
+        hash.to_xml(xml)
+      end
+      xml_str.should contain(%(<hash alg="SHA-256">abc123</hash>))
+    end
+  end
+end
+
+describe CycloneDX::ExternalReference do
+  describe "#initialize" do
+    it "initializes with type and url" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")
+      ref.ref_type.should eq("website")
+      ref.url.should eq("https://example.com")
+      ref.comment.should be_nil
+    end
+
+    it "initializes with comment" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/foo/bar", comment: "Main repo")
+      ref.comment.should eq("Main repo")
+    end
+  end
+
+  describe "#to_xml" do
+    it "includes comment in XML" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/foo/bar", comment: "Main repo")
+      xml_str = XML.build(indent: "  ") do |xml|
+        ref.to_xml(xml)
+      end
+      xml_str.should contain("<comment>Main repo</comment>")
+    end
+  end
+end
+
+describe CycloneDX::Dependency do
+  describe "#initialize" do
+    it "initializes with ref and empty dependsOn" do
+      dep = CycloneDX::Dependency.new(ref: "my-lib@1.0.0")
+      dep.ref.should eq("my-lib@1.0.0")
+      dep.depends_on.should be_empty
+    end
+
+    it "initializes with dependsOn" do
+      dep = CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0", "lib-b@2.0.0"])
+      dep.depends_on.should eq(["lib-a@1.0.0", "lib-b@2.0.0"])
+    end
+  end
+
+  describe "#to_json" do
+    it "serializes to JSON correctly" do
+      dep = CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0"])
+      json = dep.to_json
+      json.should contain(%("ref":"my-app@1.0.0"))
+      json.should contain(%("dependsOn"))
+      json.should contain(%("lib-a@1.0.0"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes to XML correctly with dependsOn" do
+      dep = CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0"])
+      xml_str = XML.build(indent: "  ") do |xml|
+        dep.to_xml(xml)
+      end
+      xml_str.should contain(%(<dependency ref="my-app@1.0.0">))
+      xml_str.should contain(%(<dependency ref="lib-a@1.0.0"/>))
+    end
+
+    it "serializes to XML correctly without dependsOn" do
+      dep = CycloneDX::Dependency.new(ref: "lib-a@1.0.0")
+      xml_str = XML.build(indent: "  ") do |xml|
+        dep.to_xml(xml)
+      end
+      xml_str.should contain(%(<dependency ref="lib-a@1.0.0"/>))
+    end
+  end
+end
+
+describe CycloneDX::Tool do
+  describe "#to_json" do
+    it "serializes correctly" do
+      tool = CycloneDX::Tool.new(vendor: "v", name: "t", version: "1.0")
+      json = tool.to_json
+      json.should contain(%("vendor":"v"))
+      json.should contain(%("name":"t"))
+      json.should contain(%("version":"1.0"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes correctly" do
+      tool = CycloneDX::Tool.new(vendor: "v", name: "t", version: "1.0")
+      xml_str = XML.build(indent: "  ") do |xml|
+        tool.to_xml(xml)
+      end
+      xml_str.should contain("<tool>")
+      xml_str.should contain("<vendor>v</vendor>")
+      xml_str.should contain("<name>t</name>")
+      xml_str.should contain("<version>1.0</version>")
+    end
+  end
+end
+
+describe CycloneDX::OrganizationalContact do
+  describe "#to_json" do
+    it "serializes correctly" do
+      contact = CycloneDX::OrganizationalContact.new(name: "John", email: "john@example.com", phone: "123")
+      json = contact.to_json
+      json.should contain(%("name":"John"))
+      json.should contain(%("email":"john@example.com"))
+      json.should contain(%("phone":"123"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes correctly" do
+      contact = CycloneDX::OrganizationalContact.new(name: "John", email: "john@example.com")
+      xml_str = XML.build(indent: "  ") do |xml|
+        contact.to_xml(xml)
+      end
+      xml_str.should contain("<author>")
+      xml_str.should contain("<name>John</name>")
+      xml_str.should contain("<email>john@example.com</email>")
     end
   end
 end

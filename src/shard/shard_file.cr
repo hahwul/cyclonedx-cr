@@ -17,4 +17,20 @@ class ShardFile
   getter license : String?
   getter homepage : String?
   getter repository : String?
+
+  # Dependency maps (name -> source details)
+  getter dependencies : YAML::Any?
+  @[YAML::Field(key: "development_dependencies")]
+  getter development_dependencies : YAML::Any?
+
+  # Returns the set of dependency names declared as development dependencies.
+  def dev_dependency_names : Set(String)
+    names = Set(String).new
+    if dev_deps = @development_dependencies
+      if mapping = dev_deps.as_h?
+        mapping.each_key { |key| names << key.as_s }
+      end
+    end
+    names
+  end
 end

@@ -54,4 +54,39 @@ describe ShardFile do
       end
     end
   end
+
+  describe "#dev_dependency_names" do
+    it "returns development dependency names" do
+      yaml = <<-YAML
+        name: my-shard
+        version: 0.1.0
+        dependencies:
+          kemal:
+            github: kemalcr/kemal
+        development_dependencies:
+          ameba:
+            github: crystal-ameba/ameba
+          spec2:
+            github: waterlink/spec2.cr
+        YAML
+
+      shard = ShardFile.from_yaml(yaml)
+      dev_names = shard.dev_dependency_names
+
+      dev_names.size.should eq 2
+      dev_names.includes?("ameba").should be_true
+      dev_names.includes?("spec2").should be_true
+      dev_names.includes?("kemal").should be_false
+    end
+
+    it "returns empty set when no development_dependencies" do
+      yaml = <<-YAML
+        name: my-shard
+        version: 0.1.0
+        YAML
+
+      shard = ShardFile.from_yaml(yaml)
+      shard.dev_dependency_names.should be_empty
+    end
+  end
 end

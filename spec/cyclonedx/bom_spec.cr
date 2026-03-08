@@ -18,7 +18,6 @@ describe CycloneDX::BOM do
       match2.should_not be_nil
 
       if match1 && match2
-        # This is expected to fail before the fix
         match1[1].should eq(match2[1])
         match1[1].should start_with("urn:uuid:")
       end
@@ -28,19 +27,55 @@ describe CycloneDX::BOM do
       components = [] of CycloneDX::Component
       bom = CycloneDX::BOM.new(components, "1.4")
 
-      # Generate XML to potentially trigger lazy initialization if it were implemented that way (it's not, but good practice)
       xml = bom.to_xml
       match_xml = xml.match(/serialNumber="([^"]+)"/)
       match_xml.should_not be_nil
 
-      # Check JSON
       json = bom.to_json
-      # This is expected to fail before the fix as serialNumber is missing
       json.should contain("serialNumber")
 
       if match_xml
         json.should contain(match_xml[1])
       end
+    end
+  end
+
+  describe "dependencies" do
+    it "includes dependencies in JSON output" do
+      components = [CycloneDX::Component.new(name: "lib-a", version: "1.0.0", bom_ref: "lib-a@1.0.0")]
+      deps = [
+        CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0"]),
+        CycloneDX::Dependency.new(ref: "lib-a@1.0.0"),
+      ]
+      bom = CycloneDX::BOM.new(components, "1.6", dependencies: deps)
+
+      json = bom.to_json
+      json.should contain(%("dependencies"))
+      json.should contain(%("ref":"my-app@1.0.0"))
+      json.should contain(%("dependsOn"))
+      json.should contain(%("lib-a@1.0.0"))
+    end
+
+    it "includes dependencies in XML output" do
+      components = [CycloneDX::Component.new(name: "lib-a", version: "1.0.0", bom_ref: "lib-a@1.0.0")]
+      deps = [
+        CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0"]),
+        CycloneDX::Dependency.new(ref: "lib-a@1.0.0"),
+      ]
+      bom = CycloneDX::BOM.new(components, "1.6", dependencies: deps)
+
+      xml = bom.to_xml
+      xml.should contain("<dependencies>")
+      xml.should contain(%(<dependency ref="my-app@1.0.0">))
+      xml.should contain(%(<dependency ref="lib-a@1.0.0"/>))
+    end
+
+    it "omits dependencies element when nil" do
+      components = [] of CycloneDX::Component
+      bom = CycloneDX::BOM.new(components, "1.6")
+
+      xml = bom.to_xml
+      xml.should_not contain("<dependencies>")
     end
   end
 end

@@ -12,6 +12,7 @@ describe CycloneDX::Metadata do
       metadata.component.should be_nil
       metadata.tools.should be_nil
       metadata.authors.should be_nil
+      metadata.timestamp.should be_nil
     end
 
     it "can be initialized with a component" do
@@ -31,6 +32,11 @@ describe CycloneDX::Metadata do
       metadata = CycloneDX::Metadata.new(authors: [author])
       metadata.authors.should eq([author])
     end
+
+    it "can be initialized with a timestamp" do
+      metadata = CycloneDX::Metadata.new(timestamp: "2024-01-01T00:00:00Z")
+      metadata.timestamp.should eq("2024-01-01T00:00:00Z")
+    end
   end
 
   describe "#to_json" do
@@ -42,7 +48,8 @@ describe CycloneDX::Metadata do
       metadata = CycloneDX::Metadata.new(
         component: component,
         tools: [tool],
-        authors: [author]
+        authors: [author],
+        timestamp: "2024-01-01T00:00:00Z"
       )
 
       json_string = metadata.to_json
@@ -51,6 +58,7 @@ describe CycloneDX::Metadata do
       json["component"]["name"].as_s.should eq("test-component")
       json["tools"][0]["vendor"].as_s.should eq("vendor")
       json["authors"][0]["name"].as_s.should eq("Author Name")
+      json["timestamp"].as_s.should eq("2024-01-01T00:00:00Z")
     end
   end
 
@@ -63,7 +71,8 @@ describe CycloneDX::Metadata do
       metadata = CycloneDX::Metadata.new(
         component: component,
         tools: [tool],
-        authors: [author]
+        authors: [author],
+        timestamp: "2024-01-01T00:00:00Z"
       )
 
       io = IO::Memory.new
@@ -73,6 +82,7 @@ describe CycloneDX::Metadata do
       xml_string = io.to_s
 
       xml_string.should contain("<metadata>")
+      xml_string.should contain("<timestamp>2024-01-01T00:00:00Z</timestamp>")
       xml_string.should contain("<tools>")
       xml_string.should contain("<tool>")
       xml_string.should contain("<vendor>vendor</vendor>")

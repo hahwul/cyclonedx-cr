@@ -7,15 +7,20 @@ module CycloneDX
   class Metadata
     include JSON::Serializable
 
+    getter timestamp : String?
     getter component : Component?
     getter tools : Array(Tool)?
     getter authors : Array(OrganizationalContact)?
 
-    def initialize(@component : Component? = nil, @tools : Array(Tool)? = nil, @authors : Array(OrganizationalContact)? = nil)
+    def initialize(@component : Component? = nil, @tools : Array(Tool)? = nil,
+                   @authors : Array(OrganizationalContact)? = nil, @timestamp : String? = nil)
     end
 
     def to_xml(xml : XML::Builder)
       xml.element("metadata") do
+        if ts = @timestamp
+          xml.element("timestamp") { xml.text ts }
+        end
         if tools_val = @tools
           xml.element("tools") do
             tools_val.each(&.to_xml(xml))
