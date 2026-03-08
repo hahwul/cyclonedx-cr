@@ -13,7 +13,7 @@
 
         cyclonedx-cr = pkgs.crystal.buildCrystalPackage rec {
           pname = "cyclonedx-cr";
-          version = "1.0.2";
+          version = "1.1.0";
 
           src = ./.;
 
