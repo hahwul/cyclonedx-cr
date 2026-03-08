@@ -171,7 +171,7 @@ class App
 
   # Parses the main component information from a parsed ShardFile.
   private def parse_main_component(shard : ShardFile) : CycloneDX::Component
-    licenses = shard.license.try { |l| [CycloneDX::License.new(name: l)] }
+    licenses = shard.license.try { |license| [CycloneDX::License.new(name: license)] }
 
     external_refs = [
       shard.homepage.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_WEBSITE, url: url) },
