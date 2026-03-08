@@ -24,6 +24,6 @@ jobs:
             system "shards build --release --no-debug --production"
             bin.install "bin/cyclonedx-cr"
           test: system "{bin}/cyclonedx-cr", "-v"
-          update_readme_table: true
+          update_readme_table: false
           skip_commit: false
           debug: false
