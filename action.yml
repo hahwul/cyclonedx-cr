@@ -17,7 +17,7 @@ inputs:
     required: false
     default: ""
   spec_version:
-    description: "CycloneDX spec version (options: 1.4, 1.5, 1.6)"
+    description: "CycloneDX spec version (options: 1.4, 1.5, 1.6, 1.7)"
     required: false
     default: "1.6"
   output_format:
