@@ -29,6 +29,23 @@ brew install hahwul/cyclonedx-cr/cyclonedx-cr
 docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/hahwul/cyclonedx-cr:latest
 ```
 
+### As a Shard Dependency
+
+Add cyclonedx-cr to your `shard.yml`:
+
+```yaml
+development_dependencies:
+  cyclonedx-cr:
+    github: hahwul/cyclonedx-cr
+```
+
+Then run:
+
+```bash
+shards install
+bin/cyclonedx-cr
+```
+
 ### From Source
 
 Requirements: [Crystal](https://crystal-lang.org/) 1.6.2+
