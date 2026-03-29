@@ -9,7 +9,7 @@ require "./shard/shard_lock_file"
 # Main application class for generating CycloneDX SBOMs from Crystal Shard files.
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
-  VERSION            = "1.0.2"
+  VERSION            = "1.1.0"
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
@@ -25,9 +25,8 @@ class App
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
 
-  # Regex patterns for parsing Git URLs
-  private GITHUB_URL_PATTERN = /.*github\.com[\/:]/
-  private GIT_SUFFIX_PATTERN = /\.git$/
+  # Regex pattern for extracting owner/repo from GitHub Git URLs
+  private GITHUB_REPO_PATTERN = /github\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/
 
   # Holds parsed command-line options.
   record Options,
@@ -136,8 +135,14 @@ class App
     if options.output_file.empty?
       puts output_content
     else
-      File.write(options.output_file, output_content)
-      STDERR.puts "SBOM successfully written to #{options.output_file} in #{options.output_format.upcase} format."
+      begin
+        File.write(options.output_file, output_content)
+        STDERR.puts "SBOM successfully written to #{options.output_file} in #{options.output_format.upcase} format."
+      rescue ex : File::Error
+        STDERR.puts "Error: Could not write to `#{options.output_file}`."
+        STDERR.puts ex.message
+        exit(1)
+      end
     end
   end
 
@@ -244,9 +249,10 @@ class App
     end
   end
 
-  # Extracts the GitHub repository path from a Git URL.
+  # Extracts the GitHub repository path (owner/repo) from a Git URL.
   private def parse_github_repo_from_git_url(git_url : String) : String?
-    return unless git_url.includes?("github.com")
-    git_url.sub(GITHUB_URL_PATTERN, "").sub(GIT_SUFFIX_PATTERN, "")
+    if git_url =~ GITHUB_REPO_PATTERN
+      $1
+    end
   end
 end
