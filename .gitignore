@@ -1,5 +1,6 @@
 # Crystal
-bin
+bin/*
+!bin/cyclonedx-cr
 lib
 
 # SBOM
