@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.0
+
+### Added
+- Executable entrypoints for `shards install` support
+- `executables` field in `shard.yml` for shards install support
+- CHANGELOG file
+
+### Changed
+- Remove old Crystal version CI
+- Bump sigstore/cosign-installer from 4.0.0 to 4.1.1
+
+### Fixed
+- Fix version mismatch, harden entrypoint, and improve error handling
+
 ## v1.1.0
 
 ### Added
