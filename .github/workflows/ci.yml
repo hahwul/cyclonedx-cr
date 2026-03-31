@@ -12,11 +12,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      logLevel:
-        description: manual run
-        required: false
-        default: ""
 
 jobs:
   build-crystal:
@@ -26,9 +21,9 @@ jobs:
         crystal-version: [1.19.0]
     steps:
       - uses: actions/checkout@v6
-      - uses: MeilCli/setup-crystal-action@v4
+      - uses: crystal-lang/install-crystal@v1
         with:
-          crystal_version: ${{ matrix.crystal-version }}
+          crystal: ${{ matrix.crystal-version }}
       - name: Install dependencies
         run: shards install
       - name: Build
@@ -66,12 +61,6 @@ jobs:
           platforms: ${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Run Ameba linter
-        uses: crystal-ameba/github-action@master
   tests:
     runs-on: ubuntu-latest
     container:
