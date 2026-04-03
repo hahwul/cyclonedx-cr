@@ -1,4 +1,0 @@
-#!/usr/bin/env crystal
-require "cyclonedx-cr"
-
-App.new.run

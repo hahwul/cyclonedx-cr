@@ -28,7 +28,7 @@ class ShardFile
     names = Set(String).new
     if dev_deps = @development_dependencies
       if mapping = dev_deps.as_h?
-        mapping.each_key { |key| names << key.as_s }
+        mapping.each_key { |key| key.as_s?.try { |s| names << s } }
       end
     end
     names

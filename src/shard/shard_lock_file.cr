@@ -20,6 +20,8 @@ class ShardLockEntry
   getter git : String?
   # The GitHub repository path (e.g., "owner/repo") if sourced from GitHub.
   getter github : String?
+  # The GitLab repository path (e.g., "owner/repo") if sourced from GitLab.
+  getter gitlab : String?
   # The local path if the dependency is a local path dependency.
   getter path : String?
 end

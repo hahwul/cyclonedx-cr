@@ -1,0 +1,8 @@
+version: 2.0
+shards:
+  kemal:
+    github: kemalcr/kemal
+    version: 1.4.0
+  ameba:
+    git: https://github.com/crystal-ameba/ameba.git
+    version: 1.6.4

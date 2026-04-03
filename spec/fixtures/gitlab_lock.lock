@@ -1,0 +1,8 @@
+version: 2.0
+shards:
+  my_lib:
+    gitlab: myorg/my_lib
+    version: 2.0.0
+  other_lib:
+    git: https://gitlab.com/otherorg/other_lib.git
+    version: 1.0.0

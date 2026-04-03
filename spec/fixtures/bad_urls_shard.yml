@@ -1,0 +1,4 @@
+name: bad-urls
+version: 0.1.0
+homepage: not-a-valid-url
+repository: also invalid

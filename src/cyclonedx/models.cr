@@ -26,6 +26,19 @@ module CycloneDX
     end
   end
 
+  class LicenseExpression
+    include JSON::Serializable
+
+    getter expression : String
+
+    def initialize(@expression : String)
+    end
+
+    def to_xml(xml : XML::Builder)
+      xml.element("expression") { xml.text @expression }
+    end
+  end
+
   class Hash
     include JSON::Serializable
 

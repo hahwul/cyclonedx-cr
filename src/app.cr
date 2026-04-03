@@ -10,7 +10,7 @@ require "./shard/shard_lock_file"
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
   VERSION            = "1.2.0"
-  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
+  SUPPORTED_VERSIONS = CycloneDX::BOM::SUPPORTED_VERSIONS
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
   DEFAULT_FORMAT     = "json"
@@ -21,12 +21,14 @@ class App
   REF_TYPE_WEBSITE           = "website"
   REF_TYPE_VCS               = "vcs"
   PURL_GITHUB_PREFIX         = "pkg:github/"
+  PURL_GITLAB_PREFIX         = "pkg:gitlab/"
 
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
 
-  # Regex pattern for extracting owner/repo from GitHub Git URLs
+  # Regex patterns for extracting owner/repo from Git URLs
   private GITHUB_REPO_PATTERN = /github\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/
+  private GITLAB_REPO_PATTERN = /gitlab\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/
 
   # Holds parsed command-line options.
   record Options,
@@ -64,6 +66,16 @@ class App
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
+      end
+      parser.invalid_option do |flag|
+        STDERR.puts "Error: Unknown option '#{flag}'."
+        STDERR.puts parser
+        exit(1)
+      end
+      parser.missing_option do |flag|
+        STDERR.puts "Error: Missing value for option '#{flag}'."
+        STDERR.puts parser
+        exit(1)
       end
     end
 
@@ -174,13 +186,26 @@ class App
     "#{name}@#{version}"
   end
 
+  # Simple URL validation pattern (http/https/git schemes)
+  private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|git@.+)\z/
+
+  # SPDX license expression operators
+  private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
+
   # Parses the main component information from a parsed ShardFile.
   private def parse_main_component(shard : ShardFile) : CycloneDX::Component
-    licenses = shard.license.try { |license| [CycloneDX::License.new(name: license)] }
+    licenses = nil
+    shard.license.try do |license|
+      if license =~ SPDX_EXPRESSION_PATTERN
+        licenses = [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
+      else
+        licenses = [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
+      end
+    end
 
     external_refs = [
-      shard.homepage.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_WEBSITE, url: url) },
-      shard.repository.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_VCS, url: url) },
+      shard.homepage.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_WEBSITE, url: url) if url =~ URL_PATTERN },
+      shard.repository.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_VCS, url: url) if url =~ URL_PATTERN },
     ].compact
     external_refs = nil if external_refs.empty?
 
@@ -240,19 +265,23 @@ class App
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.
-  # Currently supports GitHub-based PURLs.
+  # Supports GitHub and GitLab repositories.
   private def generate_purl(details : ShardLockEntry) : String?
     if github_repo = details.github
       "#{PURL_GITHUB_PREFIX}#{github_repo}@#{details.version}"
+    elsif gitlab_repo = details.gitlab
+      "#{PURL_GITLAB_PREFIX}#{gitlab_repo}@#{details.version}"
     elsif git_url = details.git
-      parse_github_repo_from_git_url(git_url).try { |repo| "#{PURL_GITHUB_PREFIX}#{repo}@#{details.version}" }
+      parse_purl_from_git_url(git_url, details.version)
     end
   end
 
-  # Extracts the GitHub repository path (owner/repo) from a Git URL.
-  private def parse_github_repo_from_git_url(git_url : String) : String?
+  # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab).
+  private def parse_purl_from_git_url(git_url : String, version : String) : String?
     if git_url =~ GITHUB_REPO_PATTERN
-      $1
+      "#{PURL_GITHUB_PREFIX}#{$1}@#{version}"
+    elsif git_url =~ GITLAB_REPO_PATTERN
+      "#{PURL_GITLAB_PREFIX}#{$1}@#{version}"
     end
   end
 end

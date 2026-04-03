@@ -8,7 +8,8 @@ require "./models"
 class CycloneDX::Component
   include JSON::Serializable
 
-  DEFAULT_TYPE = "library"
+  DEFAULT_TYPE    = "library"
+  VALID_SCOPES    = ["required", "optional", "excluded"]
 
   # A unique identifier for the component, used in dependency references.
   @[JSON::Field(key: "bom-ref")]
@@ -27,16 +28,22 @@ class CycloneDX::Component
 
   getter description : String?
   getter author : String?
-  getter licenses : Array(License)?
+  getter licenses : Array(License | LicenseExpression)?
   getter hashes : Array(Hash)?
   @[JSON::Field(key: "externalReferences")]
   getter external_references : Array(ExternalReference)?
 
   # Initializes a new CycloneDX Component.
   def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
-                 @description : String? = nil, @author : String? = nil, @licenses : Array(License)? = nil,
+                 @description : String? = nil, @author : String? = nil,
+                 @licenses : Array(License | LicenseExpression)? = nil,
                  @external_references : Array(ExternalReference)? = nil, @bom_ref : String? = nil,
                  @scope : String? = nil, @hashes : Array(Hash)? = nil)
+    if s = @scope
+      unless VALID_SCOPES.includes?(s)
+        raise ArgumentError.new("Invalid scope '#{s}'. Valid scopes are: #{VALID_SCOPES.join(", ")}")
+      end
+    end
   end
 
   # Serializes the component to XML format.

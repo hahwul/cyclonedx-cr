@@ -42,6 +42,13 @@ describe CycloneDX::BOM do
       json.should contain(%("specVersion":"1.7"))
     end
 
+    it "raises on unsupported spec version" do
+      components = [CycloneDX::Component.new("test", "1.0.2")]
+      expect_raises(ArgumentError, "Unsupported spec version") do
+        CycloneDX::BOM.new(components: components, spec_version: "9.9")
+      end
+    end
+
     it "generates correct XML namespace for spec version 1.7" do
       components = [CycloneDX::Component.new("test", "1.0.2")]
       bom = CycloneDX::BOM.new(components: components, spec_version: "1.7")

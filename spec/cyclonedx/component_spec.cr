@@ -19,7 +19,7 @@ describe CycloneDX::Component do
     end
 
     it "initializes with all arguments" do
-      licenses = [CycloneDX::License.new(name: "MIT")]
+      licenses = [CycloneDX::License.new(name: "MIT")] of CycloneDX::License | CycloneDX::LicenseExpression
       refs = [CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")]
       hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
       component = CycloneDX::Component.new(
@@ -52,7 +52,7 @@ describe CycloneDX::Component do
 
   describe "#to_json" do
     it "serializes to JSON correctly" do
-      licenses = [CycloneDX::License.new(name: "MIT")]
+      licenses = [CycloneDX::License.new(name: "MIT")] of CycloneDX::License | CycloneDX::LicenseExpression
       refs = [CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")]
       component = CycloneDX::Component.new(
         name: "json-lib",
@@ -86,7 +86,7 @@ describe CycloneDX::Component do
 
   describe "#to_xml" do
     it "serializes to XML correctly" do
-      licenses = [CycloneDX::License.new(name: "Apache-2.0")]
+      licenses = [CycloneDX::License.new(name: "Apache-2.0")] of CycloneDX::License | CycloneDX::LicenseExpression
       refs = [CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/example/xml-lib")]
       hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
       component = CycloneDX::Component.new(
@@ -142,6 +142,26 @@ describe CycloneDX::Component do
       xml_content.should_not contain %(bom-ref)
       xml_content.should_not contain %(<scope>)
       xml_content.should_not contain %(<hashes>)
+    end
+  end
+
+  describe "scope validation" do
+    it "accepts valid scopes" do
+      %w[required optional excluded].each do |scope|
+        component = CycloneDX::Component.new(name: "lib", version: "1.0", scope: scope)
+        component.scope.should eq(scope)
+      end
+    end
+
+    it "accepts nil scope" do
+      component = CycloneDX::Component.new(name: "lib", version: "1.0")
+      component.scope.should be_nil
+    end
+
+    it "raises on invalid scope" do
+      expect_raises(ArgumentError, "Invalid scope") do
+        CycloneDX::Component.new(name: "lib", version: "1.0", scope: "invalid")
+      end
     end
   end
 end
