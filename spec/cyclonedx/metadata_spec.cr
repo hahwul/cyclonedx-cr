@@ -37,6 +37,12 @@ describe CycloneDX::Metadata do
       metadata = CycloneDX::Metadata.new(timestamp: "2024-01-01T00:00:00Z")
       metadata.timestamp.should eq("2024-01-01T00:00:00Z")
     end
+
+    it "can be initialized with properties" do
+      props = [CycloneDX::Property.new(name: "cdx:tool:name", value: "test")]
+      metadata = CycloneDX::Metadata.new(properties: props)
+      metadata.properties.should eq(props)
+    end
   end
 
   describe "#to_json" do
@@ -99,6 +105,20 @@ describe CycloneDX::Metadata do
       xml_string.should contain("<version>1.0.0</version>")
 
       xml_string.should contain("</metadata>")
+    end
+
+    it "serializes properties to XML" do
+      props = [CycloneDX::Property.new(name: "cdx:tool:name", value: "test")]
+      metadata = CycloneDX::Metadata.new(properties: props)
+
+      io = IO::Memory.new
+      xml = XML::Builder.new(io)
+      metadata.to_xml(xml)
+      xml.flush
+      xml_string = io.to_s
+
+      xml_string.should contain("<properties>")
+      xml_string.should contain(%(<property name="cdx:tool:name">test</property>))
     end
   end
 end

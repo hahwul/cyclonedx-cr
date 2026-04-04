@@ -239,6 +239,55 @@ describe CycloneDX::Tool do
   end
 end
 
+describe CycloneDX::Property do
+  describe "#initialize" do
+    it "initializes with name and value" do
+      prop = CycloneDX::Property.new(name: "cdx:tool:name", value: "my-tool")
+      prop.name.should eq("cdx:tool:name")
+      prop.value.should eq("my-tool")
+    end
+
+    it "initializes with name only" do
+      prop = CycloneDX::Property.new(name: "cdx:flag")
+      prop.name.should eq("cdx:flag")
+      prop.value.should be_nil
+    end
+  end
+
+  describe "#to_json" do
+    it "serializes to JSON correctly" do
+      prop = CycloneDX::Property.new(name: "cdx:tool:name", value: "my-tool")
+      json = prop.to_json
+      json.should contain(%("name":"cdx:tool:name"))
+      json.should contain(%("value":"my-tool"))
+    end
+
+    it "serializes nil value to JSON" do
+      prop = CycloneDX::Property.new(name: "cdx:flag")
+      json = prop.to_json
+      json.should contain(%("name":"cdx:flag"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes to XML correctly" do
+      prop = CycloneDX::Property.new(name: "cdx:tool:name", value: "my-tool")
+      xml_str = XML.build(indent: "  ") do |xml|
+        prop.to_xml(xml)
+      end
+      xml_str.should contain(%(<property name="cdx:tool:name">my-tool</property>))
+    end
+
+    it "serializes empty property to XML" do
+      prop = CycloneDX::Property.new(name: "cdx:flag")
+      xml_str = XML.build(indent: "  ") do |xml|
+        prop.to_xml(xml)
+      end
+      xml_str.should contain(%(<property name="cdx:flag"/>))
+    end
+  end
+end
+
 describe CycloneDX::OrganizationalContact do
   describe "#to_json" do
     it "serializes correctly" do

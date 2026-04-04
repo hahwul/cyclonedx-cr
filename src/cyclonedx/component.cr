@@ -32,13 +32,15 @@ class CycloneDX::Component
   getter hashes : Array(Hash)?
   @[JSON::Field(key: "externalReferences")]
   getter external_references : Array(ExternalReference)?
+  getter properties : Array(Property)?
 
   # Initializes a new CycloneDX Component.
   def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
                  @description : String? = nil, @author : String? = nil,
                  @licenses : Array(License | LicenseExpression)? = nil,
                  @external_references : Array(ExternalReference)? = nil, @bom_ref : String? = nil,
-                 @scope : String? = nil, @hashes : Array(Hash)? = nil)
+                 @scope : String? = nil, @hashes : Array(Hash)? = nil,
+                 @properties : Array(Property)? = nil)
     if s = @scope
       unless VALID_SCOPES.includes?(s)
         raise ArgumentError.new("Invalid scope '#{s}'. Valid scopes are: #{VALID_SCOPES.join(", ")}")
@@ -83,6 +85,12 @@ class CycloneDX::Component
       if external_refs_val = @external_references
         xml.element("externalReferences") do
           external_refs_val.each(&.to_xml(xml))
+        end
+      end
+
+      if props = @properties
+        xml.element("properties") do
+          props.each(&.to_xml(xml))
         end
       end
     end

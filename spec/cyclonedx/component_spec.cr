@@ -16,6 +16,7 @@ describe CycloneDX::Component do
       component.bom_ref.should be_nil
       component.scope.should be_nil
       component.hashes.should be_nil
+      component.properties.should be_nil
     end
 
     it "initializes with all arguments" do
@@ -142,6 +143,19 @@ describe CycloneDX::Component do
       xml_content.should_not contain %(bom-ref)
       xml_content.should_not contain %(<scope>)
       xml_content.should_not contain %(<hashes>)
+      xml_content.should_not contain %(<properties>)
+    end
+
+    it "serializes properties to XML" do
+      props = [CycloneDX::Property.new(name: "cdx:tool:name", value: "test")]
+      component = CycloneDX::Component.new(name: "lib", version: "1.0.0", properties: props)
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+
+      xml_content.should contain %(<properties>)
+      xml_content.should contain %(<property name="cdx:tool:name">test</property>)
     end
   end
 

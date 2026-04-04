@@ -11,9 +11,11 @@ module CycloneDX
     getter component : Component?
     getter tools : Array(Tool)?
     getter authors : Array(OrganizationalContact)?
+    getter properties : Array(Property)?
 
     def initialize(@component : Component? = nil, @tools : Array(Tool)? = nil,
-                   @authors : Array(OrganizationalContact)? = nil, @timestamp : String? = nil)
+                   @authors : Array(OrganizationalContact)? = nil, @timestamp : String? = nil,
+                   @properties : Array(Property)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
@@ -32,6 +34,12 @@ module CycloneDX
           end
         end
         @component.try(&.to_xml(xml))
+
+        if props = @properties
+          xml.element("properties") do
+            props.each(&.to_xml(xml))
+          end
+        end
       end
     end
   end

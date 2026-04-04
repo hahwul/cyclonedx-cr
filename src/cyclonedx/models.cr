@@ -145,4 +145,22 @@ module CycloneDX
       end
     end
   end
+
+  class Property
+    include JSON::Serializable
+
+    getter name : String
+    getter value : String?
+
+    def initialize(@name : String, @value : String? = nil)
+    end
+
+    def to_xml(xml : XML::Builder)
+      xml.element("property", attributes: {"name" => @name}) do
+        if v = @value
+          xml.text v
+        end
+      end
+    end
+  end
 end

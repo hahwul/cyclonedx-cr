@@ -41,11 +41,15 @@ class CycloneDX::BOM
   # An array of `CycloneDX::Dependency` objects describing component relationships.
   getter dependencies : Array(Dependency)?
 
+  # An array of `CycloneDX::Property` objects for extensibility.
+  getter properties : Array(Property)?
+
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
 
   # Initializes a new CycloneDX BOM.
   def initialize(@components : Array(Component), @spec_version : String,
-                 @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil)
+                 @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil,
+                 @properties : Array(Property)? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
@@ -67,6 +71,11 @@ class CycloneDX::BOM
           if deps = @dependencies
             xml.element("dependencies") do
               deps.each(&.to_xml(xml))
+            end
+          end
+          if props = @properties
+            xml.element("properties") do
+              props.each(&.to_xml(xml))
             end
           end
         end

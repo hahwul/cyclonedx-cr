@@ -78,4 +78,38 @@ describe CycloneDX::BOM do
       xml.should_not contain("<dependencies>")
     end
   end
+
+  describe "properties" do
+    it "includes properties in JSON output" do
+      components = [] of CycloneDX::Component
+      props = [
+        CycloneDX::Property.new(name: "cdx:tool:name", value: "cyclonedx-cr"),
+        CycloneDX::Property.new(name: "cdx:tool:version", value: "1.2.0"),
+      ]
+      bom = CycloneDX::BOM.new(components, "1.6", properties: props)
+
+      json = bom.to_json
+      json.should contain(%("properties"))
+      json.should contain(%("name":"cdx:tool:name"))
+      json.should contain(%("value":"cyclonedx-cr"))
+    end
+
+    it "includes properties in XML output" do
+      components = [] of CycloneDX::Component
+      props = [CycloneDX::Property.new(name: "cdx:tool:name", value: "cyclonedx-cr")]
+      bom = CycloneDX::BOM.new(components, "1.6", properties: props)
+
+      xml = bom.to_xml
+      xml.should contain("<properties>")
+      xml.should contain(%(<property name="cdx:tool:name">cyclonedx-cr</property>))
+    end
+
+    it "omits properties element when nil" do
+      components = [] of CycloneDX::Component
+      bom = CycloneDX::BOM.new(components, "1.6")
+
+      xml = bom.to_xml
+      xml.should_not contain("<properties>")
+    end
+  end
 end
