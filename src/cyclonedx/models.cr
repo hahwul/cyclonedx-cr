@@ -126,14 +126,21 @@ module CycloneDX
     getter ref : String
     @[JSON::Field(key: "dependsOn")]
     getter depends_on : Array(String)
+    getter provides : Array(String)?
 
-    def initialize(@ref : String, @depends_on : Array(String) = [] of String)
+    def initialize(@ref : String, @depends_on : Array(String) = [] of String,
+                   @provides : Array(String)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
       xml.element("dependency", attributes: {"ref" => @ref}) do
         @depends_on.each do |dep_ref|
           xml.element("dependency", attributes: {"ref" => dep_ref})
+        end
+        if provides_val = @provides
+          provides_val.each do |prov_ref|
+            xml.element("provides", attributes: {"ref" => prov_ref})
+          end
         end
       end
     end

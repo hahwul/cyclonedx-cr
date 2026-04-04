@@ -238,6 +238,13 @@ describe CycloneDX::Dependency do
       json.should contain(%("dependsOn"))
       json.should contain(%("lib-a@1.0.0"))
     end
+
+    it "serializes provides to JSON" do
+      dep = CycloneDX::Dependency.new(ref: "my-lib@1.0.0", provides: ["virtual-api@1.0"])
+      json = dep.to_json
+      json.should contain(%("provides"))
+      json.should contain(%("virtual-api@1.0"))
+    end
   end
 
   describe "#to_xml" do
@@ -256,6 +263,15 @@ describe CycloneDX::Dependency do
         dep.to_xml(xml)
       end
       xml_str.should contain(%(<dependency ref="lib-a@1.0.0"/>))
+    end
+
+    it "serializes provides to XML" do
+      dep = CycloneDX::Dependency.new(ref: "my-lib@1.0.0", provides: ["virtual-api@1.0", "compat-layer@2.0"])
+      xml_str = XML.build(indent: "  ") do |xml|
+        dep.to_xml(xml)
+      end
+      xml_str.should contain(%(<provides ref="virtual-api@1.0"/>))
+      xml_str.should contain(%(<provides ref="compat-layer@2.0"/>))
     end
   end
 end
