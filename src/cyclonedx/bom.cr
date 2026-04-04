@@ -8,6 +8,9 @@ require "./models"
 require "./vulnerability"
 require "./service"
 require "./composition"
+require "./annotation"
+require "./formulation"
+require "./declaration"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -55,6 +58,9 @@ class CycloneDX::BOM
 
   # An array of `CycloneDX::Composition` objects for completeness assertions.
   getter compositions : Array(Composition)?
+  getter annotations : Array(Annotation)?
+  getter formulation : Array(Formula)?
+  getter declarations : Declarations?
 
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
 
@@ -62,7 +68,9 @@ class CycloneDX::BOM
   def initialize(@components : Array(Component), @spec_version : String,
                  @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil,
                  @properties : Array(Property)? = nil, @vulnerabilities : Array(Vulnerability)? = nil,
-                 @services : Array(Service)? = nil, @compositions : Array(Composition)? = nil)
+                 @services : Array(Service)? = nil, @compositions : Array(Composition)? = nil,
+                 @annotations : Array(Annotation)? = nil, @formulation : Array(Formula)? = nil,
+                 @declarations : Declarations? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
@@ -101,6 +109,17 @@ class CycloneDX::BOM
               comps.each(&.to_xml(xml))
             end
           end
+          if annotations_val = @annotations
+            xml.element("annotations") do
+              annotations_val.each(&.to_xml(xml))
+            end
+          end
+          if formulation_val = @formulation
+            xml.element("formulation") do
+              formulation_val.each(&.to_xml(xml))
+            end
+          end
+          @declarations.try(&.to_xml(xml))
           if props = @properties
             xml.element("properties") do
               props.each(&.to_xml(xml))
