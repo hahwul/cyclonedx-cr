@@ -1,6 +1,7 @@
 require "spec"
 require "../../src/cyclonedx/bom"
 require "../../src/cyclonedx/vulnerability"
+require "../../src/cyclonedx/service"
 require "uuid"
 
 describe CycloneDX::BOM do
@@ -111,6 +112,38 @@ describe CycloneDX::BOM do
 
       xml = bom.to_xml
       xml.should_not contain("<properties>")
+    end
+  end
+
+  describe "services" do
+    it "includes services in JSON output" do
+      components = [] of CycloneDX::Component
+      svc = CycloneDX::Service.new(name: "auth-api", version: "1.0.0",
+        endpoints: ["https://auth.example.com"])
+      bom = CycloneDX::BOM.new(components, "1.6", services: [svc])
+
+      json = bom.to_json
+      json.should contain(%("services"))
+      json.should contain(%("auth-api"))
+      json.should contain(%("https://auth.example.com"))
+    end
+
+    it "includes services in XML output" do
+      components = [] of CycloneDX::Component
+      svc = CycloneDX::Service.new(name: "auth-api")
+      bom = CycloneDX::BOM.new(components, "1.6", services: [svc])
+
+      xml = bom.to_xml
+      xml.should contain("<services>")
+      xml.should contain("<name>auth-api</name>")
+    end
+
+    it "omits services element when nil" do
+      components = [] of CycloneDX::Component
+      bom = CycloneDX::BOM.new(components, "1.6")
+
+      xml = bom.to_xml
+      xml.should_not contain("<services>")
     end
   end
 

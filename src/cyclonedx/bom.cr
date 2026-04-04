@@ -6,6 +6,7 @@ require "./component"
 require "./metadata"
 require "./models"
 require "./vulnerability"
+require "./service"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -48,12 +49,16 @@ class CycloneDX::BOM
   # An array of `CycloneDX::Vulnerability` objects for VDR/VEX.
   getter vulnerabilities : Array(Vulnerability)?
 
+  # An array of `CycloneDX::Service` objects for SaaSBOM.
+  getter services : Array(Service)?
+
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
 
   # Initializes a new CycloneDX BOM.
   def initialize(@components : Array(Component), @spec_version : String,
                  @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil,
-                 @properties : Array(Property)? = nil, @vulnerabilities : Array(Vulnerability)? = nil)
+                 @properties : Array(Property)? = nil, @vulnerabilities : Array(Vulnerability)? = nil,
+                 @services : Array(Service)? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
@@ -71,6 +76,11 @@ class CycloneDX::BOM
           @metadata.try(&.to_xml(xml))
           xml.element("components") do
             @components.each(&.to_xml(xml))
+          end
+          if svcs = @services
+            xml.element("services") do
+              svcs.each(&.to_xml(xml))
+            end
           end
           if deps = @dependencies
             xml.element("dependencies") do
