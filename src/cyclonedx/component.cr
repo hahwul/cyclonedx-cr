@@ -10,9 +10,9 @@ require "./evidence"
 class CycloneDX::Component
   include JSON::Serializable
 
-  DEFAULT_TYPE    = "library"
-  VALID_SCOPES    = ["required", "optional", "excluded"]
-  VALID_TYPES     = [
+  DEFAULT_TYPE = "library"
+  VALID_SCOPES = ["required", "optional", "excluded"]
+  VALID_TYPES  = [
     "application", "framework", "library", "container", "platform",
     "operating-system", "device", "device-driver", "firmware", "file",
     "machine-learning-model", "data", "cryptographic-asset",
