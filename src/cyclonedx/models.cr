@@ -2,18 +2,57 @@ require "json"
 require "xml"
 
 module CycloneDX
-  class License
+  class AttachedText
     include JSON::Serializable
 
-    getter id : String?
-    getter name : String?
-    getter url : String?
+    getter content : String
+    @[JSON::Field(key: "contentType")]
+    getter content_type : String?
+    getter encoding : String?
 
-    def initialize(@id : String? = nil, @name : String? = nil, @url : String? = nil)
+    def initialize(@content : String, @content_type : String? = nil, @encoding : String? = nil)
     end
 
     def to_xml(xml : XML::Builder)
-      xml.element("license") do
+      attrs = {} of String => String
+      if ct = @content_type
+        attrs["content-type"] = ct
+      end
+      if enc = @encoding
+        attrs["encoding"] = enc
+      end
+      xml.element("text", attributes: attrs) do
+        xml.text @content
+      end
+    end
+  end
+
+  class License
+    include JSON::Serializable
+
+    @[JSON::Field(key: "bom-ref")]
+    getter bom_ref : String?
+    getter id : String?
+    getter name : String?
+    getter url : String?
+    getter text : AttachedText?
+    getter acknowledgement : String?
+
+    def initialize(@id : String? = nil, @name : String? = nil, @url : String? = nil,
+                   @bom_ref : String? = nil, @text : AttachedText? = nil,
+                   @acknowledgement : String? = nil)
+    end
+
+    def to_xml(xml : XML::Builder)
+      attrs = {} of String => String
+      if bom_ref_val = @bom_ref
+        attrs["bom-ref"] = bom_ref_val
+      end
+      if ack = @acknowledgement
+        attrs["acknowledgement"] = ack
+      end
+
+      xml.element("license", attributes: attrs) do
         if id_val = @id
           xml.element("id") { xml.text id_val }
         elsif name_val = @name
@@ -22,6 +61,7 @@ module CycloneDX
         if url_val = @url
           xml.element("url") { xml.text url_val }
         end
+        @text.try(&.to_xml(xml))
       end
     end
   end
@@ -30,8 +70,11 @@ module CycloneDX
     include JSON::Serializable
 
     getter expression : String
+    @[JSON::Field(key: "bom-ref")]
+    getter bom_ref : String?
+    getter acknowledgement : String?
 
-    def initialize(@expression : String)
+    def initialize(@expression : String, @bom_ref : String? = nil, @acknowledgement : String? = nil)
     end
 
     def to_xml(xml : XML::Builder)

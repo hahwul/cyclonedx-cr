@@ -112,6 +112,52 @@ describe CycloneDX::License do
       end
       xml_str.should contain("<url>https://opensource.org/licenses/MIT</url>")
     end
+
+    it "includes bom-ref and acknowledgement in XML" do
+      license = CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "declared")
+      xml_str = XML.build(indent: "  ") do |xml|
+        license.to_xml(xml)
+      end
+      xml_str.should contain(%(bom-ref="lic-1"))
+      xml_str.should contain(%(acknowledgement="declared"))
+    end
+
+    it "includes attached text in XML" do
+      text = CycloneDX::AttachedText.new(content: "MIT License text...", content_type: "text/plain", encoding: "base64")
+      license = CycloneDX::License.new(id: "MIT", text: text)
+      xml_str = XML.build(indent: "  ") do |xml|
+        license.to_xml(xml)
+      end
+      xml_str.should contain(%(content-type="text/plain"))
+      xml_str.should contain(%(encoding="base64"))
+      xml_str.should contain("MIT License text...")
+    end
+
+    it "serializes bom-ref and acknowledgement to JSON" do
+      license = CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "concluded")
+      json = license.to_json
+      json.should contain(%("bom-ref":"lic-1"))
+      json.should contain(%("acknowledgement":"concluded"))
+    end
+  end
+end
+
+describe CycloneDX::AttachedText do
+  it "serializes to JSON" do
+    text = CycloneDX::AttachedText.new(content: "license text", content_type: "text/plain")
+    json = text.to_json
+    json.should contain(%("content":"license text"))
+    json.should contain(%("contentType":"text/plain"))
+  end
+
+  it "serializes to XML" do
+    text = CycloneDX::AttachedText.new(content: "text content", content_type: "text/plain", encoding: "base64")
+    xml_str = XML.build(indent: "  ") do |xml|
+      text.to_xml(xml)
+    end
+    xml_str.should contain(%(content-type="text/plain"))
+    xml_str.should contain(%(encoding="base64"))
+    xml_str.should contain("text content")
   end
 end
 
