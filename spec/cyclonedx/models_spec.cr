@@ -239,6 +239,51 @@ describe CycloneDX::Tool do
   end
 end
 
+describe CycloneDX::Lifecycle do
+  describe "#initialize" do
+    it "initializes with a predefined phase" do
+      lc = CycloneDX::Lifecycle.new(phase: "build")
+      lc.phase.should eq("build")
+      lc.name.should be_nil
+    end
+
+    it "initializes with a custom name and description" do
+      lc = CycloneDX::Lifecycle.new(name: "staging", description: "Pre-production environment")
+      lc.phase.should be_nil
+      lc.name.should eq("staging")
+      lc.description.should eq("Pre-production environment")
+    end
+  end
+
+  describe "#to_json" do
+    it "serializes correctly" do
+      lc = CycloneDX::Lifecycle.new(phase: "operations")
+      json = lc.to_json
+      json.should contain(%("phase":"operations"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes with phase" do
+      lc = CycloneDX::Lifecycle.new(phase: "build")
+      xml_str = XML.build(indent: "  ") do |xml|
+        lc.to_xml(xml)
+      end
+      xml_str.should contain("<lifecycle>")
+      xml_str.should contain("<phase>build</phase>")
+    end
+
+    it "serializes with custom name" do
+      lc = CycloneDX::Lifecycle.new(name: "staging", description: "Staging env")
+      xml_str = XML.build(indent: "  ") do |xml|
+        lc.to_xml(xml)
+      end
+      xml_str.should contain("<name>staging</name>")
+      xml_str.should contain("<description>Staging env</description>")
+    end
+  end
+end
+
 describe CycloneDX::OrganizationalEntity do
   describe "#initialize" do
     it "initializes with all fields" do

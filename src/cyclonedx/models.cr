@@ -146,6 +146,36 @@ module CycloneDX
     end
   end
 
+  class Lifecycle
+    include JSON::Serializable
+
+    VALID_PHASES = [
+      "design", "pre-build", "build", "post-build",
+      "operations", "discovery", "decommission",
+    ]
+
+    getter phase : String?
+    getter name : String?
+    getter description : String?
+
+    def initialize(@phase : String? = nil, @name : String? = nil, @description : String? = nil)
+    end
+
+    def to_xml(xml : XML::Builder)
+      xml.element("lifecycle") do
+        if phase = @phase
+          xml.element("phase") { xml.text phase }
+        end
+        if name = @name
+          xml.element("name") { xml.text name }
+        end
+        if description = @description
+          xml.element("description") { xml.text description }
+        end
+      end
+    end
+  end
+
   class OrganizationalEntity
     include JSON::Serializable
 

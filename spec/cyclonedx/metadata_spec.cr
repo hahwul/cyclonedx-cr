@@ -43,6 +43,21 @@ describe CycloneDX::Metadata do
       metadata = CycloneDX::Metadata.new(properties: props)
       metadata.properties.should eq(props)
     end
+
+    it "can be initialized with lifecycles" do
+      lc = CycloneDX::Lifecycle.new(phase: "build")
+      metadata = CycloneDX::Metadata.new(lifecycles: [lc])
+      metadata.lifecycles.not_nil!.size.should eq(1)
+      metadata.lifecycles.not_nil![0].phase.should eq("build")
+    end
+
+    it "can be initialized with manufacture and supplier" do
+      mfr = CycloneDX::OrganizationalEntity.new(name: "Manufacturer Inc")
+      sup = CycloneDX::OrganizationalEntity.new(name: "Supplier Inc")
+      metadata = CycloneDX::Metadata.new(manufacture: mfr, supplier: sup)
+      metadata.manufacture.not_nil!.name.should eq("Manufacturer Inc")
+      metadata.supplier.not_nil!.name.should eq("Supplier Inc")
+    end
   end
 
   describe "#to_json" do
@@ -105,6 +120,27 @@ describe CycloneDX::Metadata do
       xml_string.should contain("<version>1.0.0</version>")
 
       xml_string.should contain("</metadata>")
+    end
+
+    it "serializes lifecycles, manufacture, and supplier to XML" do
+      lc = CycloneDX::Lifecycle.new(phase: "build")
+      mfr = CycloneDX::OrganizationalEntity.new(name: "Mfr Corp")
+      sup = CycloneDX::OrganizationalEntity.new(name: "Sup Corp")
+      metadata = CycloneDX::Metadata.new(lifecycles: [lc], manufacture: mfr, supplier: sup)
+
+      io = IO::Memory.new
+      xml = XML::Builder.new(io)
+      metadata.to_xml(xml)
+      xml.flush
+      xml_string = io.to_s
+
+      xml_string.should contain("<lifecycles>")
+      xml_string.should contain("<lifecycle>")
+      xml_string.should contain("<phase>build</phase>")
+      xml_string.should contain("<manufacture>")
+      xml_string.should contain("<name>Mfr Corp</name>")
+      xml_string.should contain("<supplier>")
+      xml_string.should contain("<name>Sup Corp</name>")
     end
 
     it "serializes properties to XML" do
