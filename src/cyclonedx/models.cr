@@ -146,6 +146,33 @@ module CycloneDX
     end
   end
 
+  class OrganizationalEntity
+    include JSON::Serializable
+
+    getter name : String?
+    getter url : Array(String)?
+    getter contact : Array(OrganizationalContact)?
+
+    def initialize(@name : String? = nil, @url : Array(String)? = nil, @contact : Array(OrganizationalContact)? = nil)
+    end
+
+    def to_xml(xml : XML::Builder, element_name : String = "organizationalEntity")
+      xml.element(element_name) do
+        if name = @name
+          xml.element("name") { xml.text name }
+        end
+        if urls = @url
+          urls.each do |u|
+            xml.element("url") { xml.text u }
+          end
+        end
+        if contacts = @contact
+          contacts.each(&.to_xml(xml))
+        end
+      end
+    end
+  end
+
   class Property
     include JSON::Serializable
 

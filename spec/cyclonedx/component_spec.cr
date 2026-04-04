@@ -159,6 +159,72 @@ describe CycloneDX::Component do
     end
   end
 
+  describe "expanded spec fields" do
+    it "serializes new spec fields to XML" do
+      supplier = CycloneDX::OrganizationalEntity.new(name: "Supplier Inc")
+      component = CycloneDX::Component.new(
+        name: "full-lib",
+        version: "1.0.0",
+        group: "com.example",
+        copyright: "Copyright 2024 Example",
+        cpe: "cpe:2.3:a:example:full-lib:1.0.0:*:*:*:*:*:*:*",
+        publisher: "Example Publisher",
+        supplier: supplier,
+        tags: ["security", "crypto"],
+      )
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+
+      xml_content.should contain %(<group>com.example</group>)
+      xml_content.should contain %(<copyright>Copyright 2024 Example</copyright>)
+      xml_content.should contain %(<cpe>cpe:2.3:a:example:full-lib:1.0.0:*:*:*:*:*:*:*</cpe>)
+      xml_content.should contain %(<publisher>Example Publisher</publisher>)
+      xml_content.should contain %(<supplier>)
+      xml_content.should contain %(<name>Supplier Inc</name>)
+      xml_content.should contain %(<tags>)
+      xml_content.should contain %(<tag>security</tag>)
+      xml_content.should contain %(<tag>crypto</tag>)
+    end
+
+    it "serializes nested sub-components to XML" do
+      sub = CycloneDX::Component.new(name: "sub-lib", version: "0.1.0")
+      component = CycloneDX::Component.new(name: "parent", version: "1.0.0", components: [sub])
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+
+      xml_content.should contain %(<components>)
+      xml_content.should contain %(<name>sub-lib</name>)
+    end
+
+    it "serializes new spec fields to JSON" do
+      component = CycloneDX::Component.new(
+        name: "json-test",
+        version: "1.0.0",
+        group: "com.example",
+        copyright: "Copyright 2024",
+        cpe: "cpe:2.3:a:example:json-test:1.0.0",
+        publisher: "Pub",
+        tags: ["tag1"],
+        omnibor_id: ["gitoid:blob:sha256:abc"],
+        swhid: ["swh:1:cnt:abc"],
+      )
+
+      json = component.to_json
+      json.should contain %("group":"com.example")
+      json.should contain %("copyright":"Copyright 2024")
+      json.should contain %("cpe":"cpe:2.3:a:example:json-test:1.0.0")
+      json.should contain %("publisher":"Pub")
+      json.should contain %("tags")
+      json.should contain %("tag1")
+      json.should contain %("omniborId")
+      json.should contain %("swhid")
+    end
+  end
+
   describe "scope validation" do
     it "accepts valid scopes" do
       %w[required optional excluded].each do |scope|

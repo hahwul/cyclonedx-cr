@@ -239,6 +239,44 @@ describe CycloneDX::Tool do
   end
 end
 
+describe CycloneDX::OrganizationalEntity do
+  describe "#initialize" do
+    it "initializes with all fields" do
+      contact = CycloneDX::OrganizationalContact.new(name: "John", email: "john@example.com")
+      entity = CycloneDX::OrganizationalEntity.new(
+        name: "Example Corp",
+        url: ["https://example.com"],
+        contact: [contact]
+      )
+      entity.name.should eq("Example Corp")
+      entity.url.should eq(["https://example.com"])
+      entity.contact.not_nil!.size.should eq(1)
+    end
+  end
+
+  describe "#to_json" do
+    it "serializes correctly" do
+      entity = CycloneDX::OrganizationalEntity.new(name: "Corp", url: ["https://corp.com"])
+      json = entity.to_json
+      json.should contain(%("name":"Corp"))
+      json.should contain(%("url"))
+      json.should contain(%("https://corp.com"))
+    end
+  end
+
+  describe "#to_xml" do
+    it "serializes with custom element name" do
+      entity = CycloneDX::OrganizationalEntity.new(name: "Corp", url: ["https://corp.com"])
+      xml_str = XML.build(indent: "  ") do |xml|
+        entity.to_xml(xml, "supplier")
+      end
+      xml_str.should contain("<supplier>")
+      xml_str.should contain("<name>Corp</name>")
+      xml_str.should contain("<url>https://corp.com</url>")
+    end
+  end
+end
+
 describe CycloneDX::Property do
   describe "#initialize" do
     it "initializes with name and value" do
