@@ -1,5 +1,6 @@
 require "spec"
 require "../../src/cyclonedx/bom"
+require "../../src/cyclonedx/vulnerability"
 require "uuid"
 
 describe CycloneDX::BOM do
@@ -110,6 +111,42 @@ describe CycloneDX::BOM do
 
       xml = bom.to_xml
       xml.should_not contain("<properties>")
+    end
+  end
+
+  describe "vulnerabilities" do
+    it "includes vulnerabilities in JSON output" do
+      components = [CycloneDX::Component.new(name: "lib-a", version: "1.0.0", bom_ref: "lib-a@1.0.0")]
+      vuln = CycloneDX::Vulnerability.new(
+        id: "CVE-2024-1234",
+        source: CycloneDX::VulnerabilitySource.new(name: "NVD"),
+        ratings: [CycloneDX::VulnerabilityRating.new(score: 9.8, severity: "critical")],
+        affects: [CycloneDX::VulnerabilityAffect.new(ref: "lib-a@1.0.0")],
+      )
+      bom = CycloneDX::BOM.new(components, "1.6", vulnerabilities: [vuln])
+
+      json = bom.to_json
+      json.should contain(%("vulnerabilities"))
+      json.should contain(%("CVE-2024-1234"))
+      json.should contain(%("NVD"))
+    end
+
+    it "includes vulnerabilities in XML output" do
+      components = [] of CycloneDX::Component
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1234")
+      bom = CycloneDX::BOM.new(components, "1.6", vulnerabilities: [vuln])
+
+      xml = bom.to_xml
+      xml.should contain("<vulnerabilities>")
+      xml.should contain("<id>CVE-2024-1234</id>")
+    end
+
+    it "omits vulnerabilities element when nil" do
+      components = [] of CycloneDX::Component
+      bom = CycloneDX::BOM.new(components, "1.6")
+
+      xml = bom.to_xml
+      xml.should_not contain("<vulnerabilities>")
     end
   end
 end

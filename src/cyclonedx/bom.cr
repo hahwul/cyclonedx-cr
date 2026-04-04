@@ -5,6 +5,7 @@ require "uuid"
 require "./component"
 require "./metadata"
 require "./models"
+require "./vulnerability"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -44,12 +45,15 @@ class CycloneDX::BOM
   # An array of `CycloneDX::Property` objects for extensibility.
   getter properties : Array(Property)?
 
+  # An array of `CycloneDX::Vulnerability` objects for VDR/VEX.
+  getter vulnerabilities : Array(Vulnerability)?
+
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
 
   # Initializes a new CycloneDX BOM.
   def initialize(@components : Array(Component), @spec_version : String,
                  @metadata : Metadata? = nil, @dependencies : Array(Dependency)? = nil,
-                 @properties : Array(Property)? = nil)
+                 @properties : Array(Property)? = nil, @vulnerabilities : Array(Vulnerability)? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
@@ -71,6 +75,11 @@ class CycloneDX::BOM
           if deps = @dependencies
             xml.element("dependencies") do
               deps.each(&.to_xml(xml))
+            end
+          end
+          if vulns = @vulnerabilities
+            xml.element("vulnerabilities") do
+              vulns.each(&.to_xml(xml))
             end
           end
           if props = @properties
