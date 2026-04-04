@@ -1,6 +1,8 @@
 require "json"
 require "xml"
 require "./models"
+require "./pedigree"
+require "./evidence"
 
 # Represents a component in the CycloneDX Bill of Materials (BOM).
 # This class is responsible for defining the structure and serialization
@@ -44,6 +46,8 @@ class CycloneDX::Component
   @[JSON::Field(key: "omniborId")]
   getter omnibor_id : Array(String)?
   getter swhid : Array(String)?
+  getter pedigree : Pedigree?
+  getter evidence : Evidence?
 
   def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
                  @description : String? = nil, @author : String? = nil,
@@ -55,7 +59,8 @@ class CycloneDX::Component
                  @supplier : OrganizationalEntity? = nil, @manufacturer : OrganizationalEntity? = nil,
                  @publisher : String? = nil, @mime_type : String? = nil,
                  @components : Array(Component)? = nil, @tags : Array(String)? = nil,
-                 @omnibor_id : Array(String)? = nil, @swhid : Array(String)? = nil)
+                 @omnibor_id : Array(String)? = nil, @swhid : Array(String)? = nil,
+                 @pedigree : Pedigree? = nil, @evidence : Evidence? = nil)
     if s = @scope
       unless VALID_SCOPES.includes?(s)
         raise ArgumentError.new("Invalid scope '#{s}'. Valid scopes are: #{VALID_SCOPES.join(", ")}")
@@ -122,6 +127,9 @@ class CycloneDX::Component
           props.each(&.to_xml(xml))
         end
       end
+
+      @pedigree.try(&.to_xml(xml))
+      @evidence.try(&.to_xml(xml))
 
       if sub_components = @components
         xml.element("components") do
