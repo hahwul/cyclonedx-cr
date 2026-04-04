@@ -27,11 +27,6 @@ module CycloneDX
         if ts = @timestamp
           xml.element("timestamp") { xml.text ts }
         end
-        if lifecycles_val = @lifecycles
-          xml.element("lifecycles") do
-            lifecycles_val.each(&.to_xml(xml))
-          end
-        end
         if tools_val = @tools
           xml.element("tools") do
             tools_val.each(&.to_xml(xml))
@@ -45,6 +40,11 @@ module CycloneDX
         @component.try(&.to_xml(xml))
         @manufacture.try(&.to_xml(xml, "manufacture"))
         @supplier.try(&.to_xml(xml, "supplier"))
+        if lifecycles_val = @lifecycles
+          xml.element("lifecycles") do
+            lifecycles_val.each(&.to_xml(xml))
+          end
+        end
 
         if props = @properties
           xml.element("properties") do

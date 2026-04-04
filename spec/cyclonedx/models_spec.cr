@@ -213,6 +213,16 @@ describe CycloneDX::ExternalReference do
       end
       xml_str.should contain("<comment>Main repo</comment>")
     end
+
+    it "includes hashes in XML" do
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
+      ref = CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/foo/bar", hashes: hashes)
+      xml_str = XML.build(indent: "  ") do |xml|
+        ref.to_xml(xml)
+      end
+      xml_str.should contain("<hashes>")
+      xml_str.should contain(%(<hash alg="SHA-256">abc123</hash>))
+    end
   end
 end
 
@@ -221,12 +231,18 @@ describe CycloneDX::Dependency do
     it "initializes with ref and empty dependsOn" do
       dep = CycloneDX::Dependency.new(ref: "my-lib@1.0.0")
       dep.ref.should eq("my-lib@1.0.0")
-      dep.depends_on.should be_empty
+      dep.depends_on.should be_nil
     end
 
     it "initializes with dependsOn" do
       dep = CycloneDX::Dependency.new(ref: "my-app@1.0.0", depends_on: ["lib-a@1.0.0", "lib-b@2.0.0"])
       dep.depends_on.should eq(["lib-a@1.0.0", "lib-b@2.0.0"])
+    end
+
+    it "deserializes from JSON without dependsOn field" do
+      dep = CycloneDX::Dependency.from_json(%q({"ref":"lib-a@1.0.0"}))
+      dep.ref.should eq("lib-a@1.0.0")
+      dep.depends_on.should be_nil
     end
   end
 
@@ -380,6 +396,17 @@ describe CycloneDX::OrganizationalEntity do
       xml_str.should contain("<supplier>")
       xml_str.should contain("<name>Corp</name>")
       xml_str.should contain("<url>https://corp.com</url>")
+    end
+
+    it "renders contact elements (not author) inside entity" do
+      contact = CycloneDX::OrganizationalContact.new(name: "John", email: "john@example.com")
+      entity = CycloneDX::OrganizationalEntity.new(name: "Corp", contact: [contact])
+      xml_str = XML.build(indent: "  ") do |xml|
+        entity.to_xml(xml, "supplier")
+      end
+      xml_str.should contain("<contact>")
+      xml_str.should_not contain("<author>")
+      xml_str.should contain("<name>John</name>")
     end
   end
 end

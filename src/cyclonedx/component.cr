@@ -101,6 +101,7 @@ class CycloneDX::Component
         xml.element("copyright") { xml.text(copyright) }
       end
       @cpe.try { |cpe| xml.element("cpe") { xml.text(cpe) } }
+      @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
 
       if hashes_val = @hashes
         xml.element("hashes") do
@@ -113,8 +114,6 @@ class CycloneDX::Component
           licenses_val.each(&.to_xml(xml))
         end
       end
-
-      @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
 
       if external_refs_val = @external_references
         xml.element("externalReferences") do

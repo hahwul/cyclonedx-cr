@@ -125,6 +125,22 @@ describe CycloneDX::Component do
       xml_content.should contain %(<url>https://github.com/example/xml-lib</url>)
     end
 
+    it "outputs purl before hashes in XML (spec order)" do
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
+      component = CycloneDX::Component.new(
+        name: "lib", version: "1.0.0",
+        purl: "pkg:github/owner/lib@1.0.0",
+        cpe: "cpe:2.3:a:owner:lib:1.0.0",
+        hashes: hashes,
+      )
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      purl_pos = xml_content.index("<purl>").not_nil!
+      hashes_pos = xml_content.index("<hashes>").not_nil!
+      purl_pos.should be < hashes_pos
+    end
+
     it "handles optional fields being nil in XML" do
       component = CycloneDX::Component.new(name: "minimal", version: "0.1.0")
 

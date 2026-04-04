@@ -66,7 +66,7 @@ describe "BOM JSON deserialization" do
     deps = bom.dependencies.not_nil!
     deps.size.should eq(2)
     deps[0].ref.should eq("app@1.0.0")
-    deps[0].depends_on.should eq(["lib-a@1.0.0"])
+    deps[0].depends_on.not_nil!.should eq(["lib-a@1.0.0"])
   end
 
   it "deserializes properties" do

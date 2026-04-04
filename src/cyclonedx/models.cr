@@ -78,7 +78,18 @@ module CycloneDX
     end
 
     def to_xml(xml : XML::Builder)
-      xml.element("expression") { xml.text @expression }
+      attrs = {} of String => String
+      if bom_ref_val = @bom_ref
+        attrs["bom-ref"] = bom_ref_val
+      end
+      if ack = @acknowledgement
+        attrs["acknowledgement"] = ack
+      end
+      if attrs.empty?
+        xml.element("expression") { xml.text @expression }
+      else
+        xml.element("expression", attributes: attrs) { xml.text @expression }
+      end
     end
   end
 
@@ -106,8 +117,9 @@ module CycloneDX
     getter ref_type : String
     getter url : String
     getter comment : String?
+    getter hashes : Array(Hash)?
 
-    def initialize(@ref_type : String, @url : String, @comment : String? = nil)
+    def initialize(@ref_type : String, @url : String, @comment : String? = nil, @hashes : Array(Hash)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
@@ -115,6 +127,11 @@ module CycloneDX
         xml.element("url") { xml.text @url }
         if comment_val = @comment
           xml.element("comment") { xml.text comment_val }
+        end
+        if hashes_val = @hashes
+          xml.element("hashes") do
+            hashes_val.each(&.to_xml(xml))
+          end
         end
       end
     end
@@ -125,17 +142,19 @@ module CycloneDX
 
     getter ref : String
     @[JSON::Field(key: "dependsOn")]
-    getter depends_on : Array(String)
+    getter depends_on : Array(String)?
     getter provides : Array(String)?
 
-    def initialize(@ref : String, @depends_on : Array(String) = [] of String,
+    def initialize(@ref : String, @depends_on : Array(String)? = nil,
                    @provides : Array(String)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
       xml.element("dependency", attributes: {"ref" => @ref}) do
-        @depends_on.each do |dep_ref|
-          xml.element("dependency", attributes: {"ref" => dep_ref})
+        if deps = @depends_on
+          deps.each do |dep_ref|
+            xml.element("dependency", attributes: {"ref" => dep_ref})
+          end
         end
         if provides_val = @provides
           provides_val.each do |prov_ref|
@@ -181,8 +200,8 @@ module CycloneDX
     def initialize(@name : String? = nil, @email : String? = nil, @phone : String? = nil)
     end
 
-    def to_xml(xml : XML::Builder)
-      xml.element("author") do
+    def to_xml(xml : XML::Builder, element_name : String = "author")
+      xml.element(element_name) do
         if name = @name
           xml.element("name") { xml.text name }
         end
@@ -247,7 +266,7 @@ module CycloneDX
           end
         end
         if contacts = @contact
-          contacts.each(&.to_xml(xml))
+          contacts.each { |c| c.to_xml(xml, "contact") }
         end
       end
     end
