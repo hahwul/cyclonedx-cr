@@ -3,6 +3,9 @@ require "../../src/cyclonedx/bom"
 require "../../src/cyclonedx/vulnerability"
 require "../../src/cyclonedx/service"
 require "../../src/cyclonedx/composition"
+require "../../src/cyclonedx/annotation"
+require "../../src/cyclonedx/formulation"
+require "../../src/cyclonedx/declaration"
 require "uuid"
 
 describe CycloneDX::BOM do
@@ -214,6 +217,90 @@ describe CycloneDX::BOM do
 
       xml = bom.to_xml
       xml.should_not contain("<compositions>")
+    end
+  end
+
+  describe "annotations" do
+    it "includes annotations in JSON output" do
+      ann = CycloneDX::Annotation.new(
+        subjects: ["comp-a@1.0.0"],
+        text: "Reviewed",
+        timestamp: "2024-01-01T00:00:00Z",
+      )
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", annotations: [ann])
+
+      json = bom.to_json
+      json.should contain(%("annotations"))
+      json.should contain(%("Reviewed"))
+    end
+
+    it "includes annotations in XML output" do
+      ann = CycloneDX::Annotation.new(text: "Note")
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", annotations: [ann])
+
+      xml = bom.to_xml
+      xml.should contain("<annotations>")
+      xml.should contain("<text>Note</text>")
+    end
+
+    it "omits annotations when nil" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
+      bom.to_xml.should_not contain("<annotations>")
+    end
+  end
+
+  describe "formulation" do
+    it "includes formulation in JSON output" do
+      task = CycloneDX::Task.new(name: "build", task_types: ["build"])
+      wf = CycloneDX::Workflow.new(uid: "wf-1", tasks: [task])
+      formula = CycloneDX::Formula.new(workflows: [wf])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
+
+      json = bom.to_json
+      json.should contain(%("formulation"))
+      json.should contain(%("wf-1"))
+    end
+
+    it "includes formulation in XML output" do
+      wf = CycloneDX::Workflow.new(uid: "wf-1", name: "CI")
+      formula = CycloneDX::Formula.new(workflows: [wf])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
+
+      xml = bom.to_xml
+      xml.should contain("<formulation>")
+      xml.should contain("<uid>wf-1</uid>")
+    end
+
+    it "omits formulation when nil" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
+      bom.to_xml.should_not contain("<formulation>")
+    end
+  end
+
+  describe "declarations" do
+    it "includes declarations in JSON output" do
+      standard = CycloneDX::Standard.new(name: "NIST SSDF", version: "1.1")
+      decl = CycloneDX::Declarations.new(standards: [standard])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", declarations: decl)
+
+      json = bom.to_json
+      json.should contain(%("declarations"))
+      json.should contain(%("NIST SSDF"))
+    end
+
+    it "includes declarations in XML output" do
+      claim = CycloneDX::Claim.new(predicate: "Compliant")
+      decl = CycloneDX::Declarations.new(claims: [claim])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", declarations: decl)
+
+      xml = bom.to_xml
+      xml.should contain("<declarations>")
+      xml.should contain("<predicate>Compliant</predicate>")
+    end
+
+    it "omits declarations when nil" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
+      bom.to_xml.should_not contain("<declarations>")
     end
   end
 end

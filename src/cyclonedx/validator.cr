@@ -1,4 +1,5 @@
 require "./bom"
+require "./formulation"
 
 module CycloneDX
   class ValidationError
@@ -53,6 +54,12 @@ module CycloneDX
         end
       end
 
+      if formulas = bom.formulation
+        formulas.each_with_index do |formula, i|
+          validate_formula(formula, "$.formulation[#{i}]")
+        end
+      end
+
       if md = bom.metadata
         validate_metadata(md, "$.metadata")
       end
@@ -81,6 +88,38 @@ module CycloneDX
 
     private def validate_service(svc : Service, path : String)
       add_error("#{path}.name", "must not be empty") if svc.name.empty?
+
+      if sub = svc.services
+        sub.each_with_index do |s, i|
+          validate_service(s, "#{path}.services[#{i}]")
+        end
+      end
+    end
+
+    private def validate_formula(formula : Formula, path : String)
+      if workflows = formula.workflows
+        workflows.each_with_index do |wf, i|
+          validate_workflow(wf, "#{path}.workflows[#{i}]")
+        end
+      end
+    end
+
+    private def validate_workflow(wf : Workflow, path : String)
+      if tasks = wf.tasks
+        tasks.each_with_index do |task, i|
+          validate_task(task, "#{path}.tasks[#{i}]")
+        end
+      end
+    end
+
+    private def validate_task(task : Task, path : String)
+      if types = task.task_types
+        types.each_with_index do |t, i|
+          unless Task::VALID_TASK_TYPES.includes?(t)
+            add_error("#{path}.taskTypes[#{i}]", "invalid task type '#{t}', valid: #{Task::VALID_TASK_TYPES.join(", ")}")
+          end
+        end
+      end
     end
 
     private def validate_vulnerability(vuln : Vulnerability, path : String)

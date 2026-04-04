@@ -1,5 +1,6 @@
 require "spec"
 require "../../src/cyclonedx/validator"
+require "../../src/cyclonedx/formulation"
 
 describe CycloneDX::Validator do
   describe "#validate" do
@@ -79,6 +80,34 @@ describe CycloneDX::Validator do
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
       validator.errors.size.should be >= 3
+    end
+
+    it "detects invalid task type in formulation" do
+      task = CycloneDX::Task.new(name: "bad", task_types: ["build", "invalid_type"])
+      wf = CycloneDX::Workflow.new(uid: "wf-1", tasks: [task])
+      formula = CycloneDX::Formula.new(workflows: [wf])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path.includes?("taskTypes") && e.message.includes?("invalid_type") }.should be_true
+    end
+
+    it "passes valid task types" do
+      task = CycloneDX::Task.new(name: "ci", task_types: ["build", "test", "deploy"])
+      wf = CycloneDX::Workflow.new(uid: "wf-1", tasks: [task])
+      formula = CycloneDX::Formula.new(workflows: [wf])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+    end
+
+    it "validates nested sub-services" do
+      sub = CycloneDX::Service.new(name: "")
+      parent = CycloneDX::Service.new(name: "parent", services: [sub])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", services: [parent])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path == "$.services[0].services[0].name" }.should be_true
     end
 
     it "formats error messages with to_s" do
