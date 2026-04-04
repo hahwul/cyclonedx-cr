@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.3.0
+
+### Added
+- Structural BOM validator with field path error reporting
+- Annotations, formulation, and declarations support
+- BOM JSON deserialization with comprehensive tests
+- Pedigree and evidence support for supply chain transparency
+- Provides field to Dependency for capability expression
+- Compositions support for completeness assertions
+- Services support for SaaSBOM
+- Vulnerabilities support for VDR/VEX
+- Properties support across BOM, Component, and Metadata
+
+### Changed
+- Expand Component model with missing spec fields
+- Expand License model with text, bom-ref, and acknowledgement
+- Expand Metadata model with lifecycles, manufacture, and supplier
+- Improve code quality, validation, and test coverage
+- Standardize CI workflow and remove ameba lint
+
+### Fixed
+- XML ordering, element names, and deserialization issues
+
 ## v1.2.0
 
 ### Added
