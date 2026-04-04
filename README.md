@@ -4,12 +4,12 @@ A Crystal tool for generating [CycloneDX](https://cyclonedx.org/) Software Bill 
 
 ## Features
 
-- 🔍 Generates CycloneDX SBOMs from Crystal `shard.yml` and `shard.lock` files
-- 📋 Supports multiple output formats: JSON, XML, CSV
-- 📊 Compatible with CycloneDX spec versions 1.4, 1.5, 1.6, and 1.7
-- 🔗 Automatically generates Package URLs (PURLs) for dependencies
-- 🐳 Docker support for containerized usage
-- ⚡ Fast and lightweight implementation in Crystal
+- Generates CycloneDX SBOMs from Crystal `shard.yml` and `shard.lock` files
+- Supports multiple output formats: JSON, XML, CSV
+- Compatible with CycloneDX spec versions 1.4, 1.5, 1.6, and 1.7
+- Automatically generates Package URLs (PURLs) for dependencies
+- Docker support for containerized usage
+- Fast and lightweight implementation in Crystal
 
 ## Installation
 
