@@ -2,6 +2,7 @@ require "spec"
 require "../../src/cyclonedx/bom"
 require "../../src/cyclonedx/vulnerability"
 require "../../src/cyclonedx/service"
+require "../../src/cyclonedx/composition"
 require "uuid"
 
 describe CycloneDX::BOM do
@@ -180,6 +181,39 @@ describe CycloneDX::BOM do
 
       xml = bom.to_xml
       xml.should_not contain("<vulnerabilities>")
+    end
+  end
+
+  describe "compositions" do
+    it "includes compositions in JSON output" do
+      components = [] of CycloneDX::Component
+      comp = CycloneDX::Composition.new(
+        aggregate: "incomplete_first_party_opensource_only",
+        assemblies: ["lib-a@1.0.0"],
+      )
+      bom = CycloneDX::BOM.new(components, "1.6", compositions: [comp])
+
+      json = bom.to_json
+      json.should contain(%("compositions"))
+      json.should contain(%("incomplete_first_party_opensource_only"))
+    end
+
+    it "includes compositions in XML output" do
+      components = [] of CycloneDX::Component
+      comp = CycloneDX::Composition.new(aggregate: "complete")
+      bom = CycloneDX::BOM.new(components, "1.6", compositions: [comp])
+
+      xml = bom.to_xml
+      xml.should contain("<compositions>")
+      xml.should contain("<aggregate>complete</aggregate>")
+    end
+
+    it "omits compositions element when nil" do
+      components = [] of CycloneDX::Component
+      bom = CycloneDX::BOM.new(components, "1.6")
+
+      xml = bom.to_xml
+      xml.should_not contain("<compositions>")
     end
   end
 end
