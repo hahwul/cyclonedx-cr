@@ -303,4 +303,61 @@ describe CycloneDX::BOM do
       bom.to_xml.should_not contain("<declarations>")
     end
   end
+
+  describe "externalReferences" do
+    it "includes externalReferences in JSON output" do
+      ext_ref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", external_references: [ext_ref])
+
+      json = bom.to_json
+      json.should contain(%("externalReferences"))
+      json.should contain(%("website"))
+      json.should contain(%("https://example.com"))
+    end
+
+    it "includes externalReferences in XML output" do
+      ext_ref = CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/example/repo")
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", external_references: [ext_ref])
+
+      xml = bom.to_xml
+      xml.should contain("<externalReferences>")
+      xml.should contain(%(<reference type="vcs">))
+      xml.should contain(%(<url>https://github.com/example/repo</url>))
+    end
+
+    it "omits externalReferences when nil" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
+      bom.to_xml.should_not contain("<externalReferences>")
+    end
+  end
+
+  describe "definitions" do
+    it "includes definitions in JSON output" do
+      req = CycloneDX::DefinitionRequirement.new(identifier: "REQ-1", title: "Requirement 1")
+      standard = CycloneDX::DefinitionStandard.new(name: "NIST SSDF", version: "1.1", requirements: [req])
+      defs = CycloneDX::Definitions.new(standards: [standard])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", definitions: defs)
+
+      json = bom.to_json
+      json.should contain(%("definitions"))
+      json.should contain(%("NIST SSDF"))
+      json.should contain(%("REQ-1"))
+    end
+
+    it "includes definitions in XML output" do
+      standard = CycloneDX::DefinitionStandard.new(name: "ISO 27001", version: "2022")
+      defs = CycloneDX::Definitions.new(standards: [standard])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", definitions: defs)
+
+      xml = bom.to_xml
+      xml.should contain("<definitions>")
+      xml.should contain("<standards>")
+      xml.should contain("<name>ISO 27001</name>")
+    end
+
+    it "omits definitions when nil" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
+      bom.to_xml.should_not contain("<definitions>")
+    end
+  end
 end

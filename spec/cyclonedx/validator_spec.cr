@@ -110,6 +110,25 @@ describe CycloneDX::Validator do
       validator.errors.any? { |e| e.path == "$.services[0].services[0].name" }.should be_true
     end
 
+    it "detects invalid affected version status" do
+      ver = CycloneDX::AffectedVersion.new(version: "1.0.0", status: "bad_status")
+      affect = CycloneDX::VulnerabilityAffect.new(ref: "lib@1.0.0", versions: [ver])
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", affects: [affect])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path.includes?("versions[0].status") && e.message.includes?("bad_status") }.should be_true
+    end
+
+    it "passes valid affected version status" do
+      ver = CycloneDX::AffectedVersion.new(version: "1.0.0", status: "affected")
+      affect = CycloneDX::VulnerabilityAffect.new(ref: "lib@1.0.0", versions: [ver])
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", affects: [affect])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+    end
+
     it "formats error messages with to_s" do
       comp = CycloneDX::Component.new(name: "", version: "1.0")
       bom = CycloneDX::BOM.new([comp], "1.6")

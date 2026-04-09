@@ -42,6 +42,8 @@ module CycloneDX
     getter properties : Array(Property)?
     getter services : Array(Service)?
     getter tags : Array(String)?
+    @[JSON::Field(key: "releaseNotes")]
+    getter release_notes : ReleaseNotes?
 
     def initialize(@name : String, @version : String? = nil, @bom_ref : String? = nil,
                    @provider : OrganizationalEntity? = nil, @group : String? = nil,
@@ -51,7 +53,7 @@ module CycloneDX
                    @licenses : Array(License | LicenseExpression)? = nil,
                    @external_references : Array(ExternalReference)? = nil,
                    @properties : Array(Property)? = nil, @services : Array(Service)? = nil,
-                   @tags : Array(String)? = nil)
+                   @tags : Array(String)? = nil, @release_notes : ReleaseNotes? = nil)
     end
 
     def to_xml(xml : XML::Builder)
@@ -113,6 +115,7 @@ module CycloneDX
             tags_val.each { |tag| xml.element("tag") { xml.text(tag) } }
           end
         end
+        @release_notes.try(&.to_xml(xml))
         if props = @properties
           xml.element("properties") do
             props.each(&.to_xml(xml))

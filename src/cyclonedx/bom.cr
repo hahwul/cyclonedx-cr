@@ -62,6 +62,13 @@ class CycloneDX::BOM
   getter formulation : Array(Formula)?
   getter declarations : Declarations?
 
+  # An array of `CycloneDX::ExternalReference` objects for the BOM itself.
+  @[JSON::Field(key: "externalReferences")]
+  getter external_references : Array(ExternalReference)?
+
+  # Definitions for standards (1.5+).
+  getter definitions : Definitions?
+
   SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
 
   # Initializes a new CycloneDX BOM.
@@ -70,7 +77,8 @@ class CycloneDX::BOM
                  @properties : Array(Property)? = nil, @vulnerabilities : Array(Vulnerability)? = nil,
                  @services : Array(Service)? = nil, @compositions : Array(Composition)? = nil,
                  @annotations : Array(Annotation)? = nil, @formulation : Array(Formula)? = nil,
-                 @declarations : Declarations? = nil)
+                 @declarations : Declarations? = nil, @external_references : Array(ExternalReference)? = nil,
+                 @definitions : Definitions? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
@@ -120,6 +128,12 @@ class CycloneDX::BOM
             end
           end
           @declarations.try(&.to_xml(xml))
+          @definitions.try(&.to_xml(xml))
+          if ext_refs = @external_references
+            xml.element("externalReferences") do
+              ext_refs.each(&.to_xml(xml))
+            end
+          end
           if props = @properties
             xml.element("properties") do
               props.each(&.to_xml(xml))

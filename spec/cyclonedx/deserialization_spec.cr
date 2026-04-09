@@ -133,6 +133,103 @@ describe "BOM JSON deserialization" do
     bom.components[0].name.should eq("lib")
   end
 
+  it "deserializes vulnerability with new fields" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[],
+      "vulnerabilities":[{
+        "id":"CVE-2024-1234",
+        "workaround":"Disable feature X",
+        "aliases":["GHSA-xxxx-yyyy"],
+        "advisories":[{"title":"Advisory 1","url":"https://example.com/advisory"}],
+        "rejected":"2024-06-01T00:00:00Z",
+        "proofOfConcept":{"reproductionSteps":"Step 1","environment":"Linux"}
+      }]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    vuln = bom.vulnerabilities.not_nil![0]
+    vuln.workaround.should eq("Disable feature X")
+    vuln.aliases.should eq(["GHSA-xxxx-yyyy"])
+    vuln.advisories.not_nil![0].title.should eq("Advisory 1")
+    vuln.advisories.not_nil![0].url.should eq("https://example.com/advisory")
+    vuln.rejected.should eq("2024-06-01T00:00:00Z")
+    vuln.proof_of_concept.not_nil!.reproduction_steps.should eq("Step 1")
+    vuln.proof_of_concept.not_nil!.environment.should eq("Linux")
+  end
+
+  it "deserializes BOM externalReferences" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[],
+      "externalReferences":[{"type":"website","url":"https://example.com"}]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    refs = bom.external_references.not_nil!
+    refs.size.should eq(1)
+    refs[0].ref_type.should eq("website")
+    refs[0].url.should eq("https://example.com")
+  end
+
+  it "deserializes component releaseNotes" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[{
+        "type":"library","name":"lib","version":"1.0.0",
+        "releaseNotes":{"type":"major","title":"v1.0.0","description":"Initial release"}
+      }]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    rn = bom.components[0].release_notes.not_nil!
+    rn.release_type.should eq("major")
+    rn.title.should eq("v1.0.0")
+    rn.description.should eq("Initial release")
+  end
+
+  it "deserializes BOM definitions" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[],
+      "definitions":{
+        "standards":[{
+          "bom-ref":"std-1",
+          "name":"NIST SSDF",
+          "version":"1.1",
+          "owner":"NIST",
+          "requirements":[{"identifier":"PO.1","title":"Define Security Requirements"}]
+        }]
+      }
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    defs = bom.definitions.not_nil!
+    std = defs.standards.not_nil![0]
+    std.bom_ref.should eq("std-1")
+    std.name.should eq("NIST SSDF")
+    std.version.should eq("1.1")
+    std.owner.should eq("NIST")
+    req = std.requirements.not_nil![0]
+    req.identifier.should eq("PO.1")
+    req.title.should eq("Define Security Requirements")
+  end
+
+  it "deserializes component cryptoProperties" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[{
+        "type":"cryptographic-asset","name":"aes","version":"1.0.0",
+        "cryptoProperties":{"assetType":"algorithm","oid":"2.16.840.1.101.3.4.1.6"}
+      }]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    crypto = bom.components[0].crypto_properties.not_nil!
+    crypto.asset_type.should eq("algorithm")
+    crypto.oid.should eq("2.16.840.1.101.3.4.1.6")
+  end
+
   it "round-trips through JSON serialization" do
     components = [CycloneDX::Component.new(name: "lib", version: "1.0.0", bom_ref: "lib@1.0.0")]
     deps = [CycloneDX::Dependency.new(ref: "lib@1.0.0")]

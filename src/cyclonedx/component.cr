@@ -48,6 +48,15 @@ class CycloneDX::Component
   getter swhid : Array(String)?
   getter pedigree : Pedigree?
   getter evidence : Evidence?
+  getter authors : Array(OrganizationalContact)?
+  getter swid : Swid?
+  @[JSON::Field(key: "releaseNotes")]
+  getter release_notes : ReleaseNotes?
+  @[JSON::Field(key: "modelCard")]
+  getter model_card : ModelCard?
+  getter data : Array(ComponentData)?
+  @[JSON::Field(key: "cryptoProperties")]
+  getter crypto_properties : CryptoProperties?
 
   def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
                  @description : String? = nil, @author : String? = nil,
@@ -60,7 +69,10 @@ class CycloneDX::Component
                  @publisher : String? = nil, @mime_type : String? = nil,
                  @components : Array(Component)? = nil, @tags : Array(String)? = nil,
                  @omnibor_id : Array(String)? = nil, @swhid : Array(String)? = nil,
-                 @pedigree : Pedigree? = nil, @evidence : Evidence? = nil)
+                 @pedigree : Pedigree? = nil, @evidence : Evidence? = nil,
+                 @authors : Array(OrganizationalContact)? = nil, @swid : Swid? = nil,
+                 @release_notes : ReleaseNotes? = nil, @model_card : ModelCard? = nil,
+                 @data : Array(ComponentData)? = nil, @crypto_properties : CryptoProperties? = nil)
     if s = @scope
       unless VALID_SCOPES.includes?(s)
         raise ArgumentError.new("Invalid scope '#{s}'. Valid scopes are: #{VALID_SCOPES.join(", ")}")
@@ -80,6 +92,11 @@ class CycloneDX::Component
     xml.element("component", attributes: attrs) do
       @supplier.try(&.to_xml(xml, "supplier"))
       @manufacturer.try(&.to_xml(xml, "manufacturer"))
+      if authors_val = @authors
+        xml.element("authors") do
+          authors_val.each(&.to_xml(xml))
+        end
+      end
       if author = @author
         xml.element("author") { xml.text(author) }
       end
@@ -102,6 +119,7 @@ class CycloneDX::Component
       end
       @cpe.try { |cpe| xml.element("cpe") { xml.text(cpe) } }
       @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
+      @swid.try(&.to_xml(xml))
 
       if hashes_val = @hashes
         xml.element("hashes") do
@@ -135,6 +153,17 @@ class CycloneDX::Component
           sub_components.each(&.to_xml(xml))
         end
       end
+
+      @model_card.try(&.to_xml(xml))
+
+      if data_val = @data
+        xml.element("data") do
+          data_val.each(&.to_xml(xml))
+        end
+      end
+
+      @crypto_properties.try(&.to_xml(xml))
+      @release_notes.try(&.to_xml(xml))
 
       if tags_val = @tags
         xml.element("tags") do

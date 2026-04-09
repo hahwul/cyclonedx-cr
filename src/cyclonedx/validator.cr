@@ -145,6 +145,20 @@ module CycloneDX
           end
         end
       end
+
+      if affects = vuln.affects
+        affects.each_with_index do |affect, i|
+          if versions = affect.versions
+            versions.each_with_index do |ver, j|
+              if status = ver.status
+                unless AffectedVersion::VALID_STATUSES.includes?(status)
+                  add_error("#{path}.affects[#{i}].versions[#{j}].status", "invalid status '#{status}'")
+                end
+              end
+            end
+          end
+        end
+      end
     end
 
     private def validate_composition(comp : Composition, path : String)

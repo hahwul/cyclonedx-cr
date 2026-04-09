@@ -241,6 +241,141 @@ describe CycloneDX::Component do
     end
   end
 
+  describe "new CycloneDX spec fields" do
+    it "serializes authors (OrganizationalContact array) to JSON and XML" do
+      authors = [
+        CycloneDX::OrganizationalContact.new(name: "Alice", email: "alice@example.com"),
+        CycloneDX::OrganizationalContact.new(name: "Bob"),
+      ]
+      component = CycloneDX::Component.new(name: "lib", version: "1.0.0", authors: authors)
+
+      json = component.to_json
+      json.should contain(%("authors"))
+      json.should contain(%("Alice"))
+      json.should contain(%("alice@example.com"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<authors>))
+      xml_content.should contain(%(<name>Alice</name>))
+      xml_content.should contain(%(<email>alice@example.com</email>))
+    end
+
+    it "serializes swid to JSON and XML" do
+      swid = CycloneDX::Swid.new(tag_id: "swidgen-242eb18a-503e-ca37", name: "my-lib", version: "1.0.0")
+      component = CycloneDX::Component.new(name: "my-lib", version: "1.0.0", swid: swid)
+
+      json = component.to_json
+      json.should contain(%("swid"))
+      json.should contain(%("tagId":"swidgen-242eb18a-503e-ca37"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<swid tagId="swidgen-242eb18a-503e-ca37" name="my-lib" version="1.0.0"))
+    end
+
+    it "serializes releaseNotes to JSON and XML" do
+      rn = CycloneDX::ReleaseNotes.new(
+        release_type: "major",
+        title: "v2.0.0",
+        description: "Major release with breaking changes",
+        timestamp: "2024-01-01T00:00:00Z",
+        tags: ["breaking", "security"],
+      )
+      component = CycloneDX::Component.new(name: "lib", version: "2.0.0", release_notes: rn)
+
+      json = component.to_json
+      json.should contain(%("releaseNotes"))
+      json.should contain(%("type":"major"))
+      json.should contain(%("title":"v2.0.0"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<releaseNotes>))
+      xml_content.should contain(%(<type>major</type>))
+      xml_content.should contain(%(<title>v2.0.0</title>))
+      xml_content.should contain(%(<description>Major release with breaking changes</description>))
+      xml_content.should contain(%(<tag>breaking</tag>))
+    end
+
+    it "serializes modelCard to JSON and XML" do
+      params = CycloneDX::ModelParameters.new(
+        task: "text-classification",
+        architecture_family: "transformer",
+      )
+      mc = CycloneDX::ModelCard.new(bom_ref: "mc-1", model_parameters: params)
+      component = CycloneDX::Component.new(
+        name: "sentiment-model", version: "1.0.0",
+        component_type: "machine-learning-model", model_card: mc,
+      )
+
+      json = component.to_json
+      json.should contain(%("modelCard"))
+      json.should contain(%("task":"text-classification"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<modelCard bom-ref="mc-1">))
+      xml_content.should contain(%(<modelParameters>))
+      xml_content.should contain(%(<task>text-classification</task>))
+      xml_content.should contain(%(<architectureFamily>transformer</architectureFamily>))
+    end
+
+    it "serializes data to JSON and XML" do
+      data = [CycloneDX::ComponentData.new(data_type: "dataset", name: "training-data")]
+      component = CycloneDX::Component.new(
+        name: "data-component", version: "1.0.0",
+        component_type: "data", data: data,
+      )
+
+      json = component.to_json
+      json.should contain(%("data"))
+      json.should contain(%("training-data"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<data>))
+      xml_content.should contain(%(<name>training-data</name>))
+    end
+
+    it "serializes cryptoProperties to JSON and XML" do
+      algo = CycloneDX::AlgorithmProperties.new(
+        primitive: "ae", mode: "gcm", padding: "pkcs7",
+        crypto_functions: ["encrypt", "decrypt"],
+      )
+      crypto = CycloneDX::CryptoProperties.new(
+        asset_type: "algorithm", algorithm_properties: algo, oid: "2.16.840.1.101.3.4.1.6",
+      )
+      component = CycloneDX::Component.new(
+        name: "aes-256-gcm", version: "1.0.0",
+        component_type: "cryptographic-asset", crypto_properties: crypto,
+      )
+
+      json = component.to_json
+      json.should contain(%("cryptoProperties"))
+      json.should contain(%("assetType":"algorithm"))
+      json.should contain(%("primitive":"ae"))
+      json.should contain(%("oid":"2.16.840.1.101.3.4.1.6"))
+
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      xml_content.should contain(%(<cryptoProperties>))
+      xml_content.should contain(%(<assetType>algorithm</assetType>))
+      xml_content.should contain(%(<algorithmProperties>))
+      xml_content.should contain(%(<primitive>ae</primitive>))
+      xml_content.should contain(%(<mode>gcm</mode>))
+      xml_content.should contain(%(<cryptoFunctions>))
+      xml_content.should contain(%(<cryptoFunction>encrypt</cryptoFunction>))
+      xml_content.should contain(%(<oid>2.16.840.1.101.3.4.1.6</oid>))
+    end
+  end
+
   describe "scope validation" do
     it "accepts valid scopes" do
       %w[required optional excluded].each do |scope|

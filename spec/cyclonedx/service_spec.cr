@@ -131,6 +131,22 @@ describe CycloneDX::Service do
       xml_str.should_not contain(%(<authenticated>))
     end
 
+    it "serializes releaseNotes to XML" do
+      rn = CycloneDX::ReleaseNotes.new(
+        release_type: "minor",
+        title: "v1.1.0",
+        description: "Bug fixes and improvements",
+      )
+      svc = CycloneDX::Service.new(name: "my-service", version: "1.1.0", release_notes: rn)
+
+      xml_str = XML.build(indent: "  ") do |xml|
+        svc.to_xml(xml)
+      end
+      xml_str.should contain(%(<releaseNotes>))
+      xml_str.should contain(%(<type>minor</type>))
+      xml_str.should contain(%(<title>v1.1.0</title>))
+    end
+
     it "serializes nested sub-services" do
       sub = CycloneDX::Service.new(name: "sub-service", version: "0.1.0")
       svc = CycloneDX::Service.new(name: "parent", services: [sub])
