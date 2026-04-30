@@ -37,8 +37,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /cyclonedx-cr/bin/cyclonedx-cr /usr/local/bin/cyclonedx-cr
 
-# Run as non-root
-# USER 2:2
+# Run as a non-root user. uid/gid 1001 matches the default uid of the
+# GitHub Actions runner, which means SBOM output written to a bind-mounted
+# $GITHUB_WORKSPACE will land owned by the runner user instead of root.
+# Standalone CLI consumers can override with `--user` if needed.
+RUN groupadd --system --gid 1001 cyclonedx \
+ && useradd  --system --uid 1001 --gid cyclonedx --create-home --shell /usr/sbin/nologin cyclonedx
+USER 1001:1001
 
 # Default command
 CMD ["cyclonedx-cr"]
