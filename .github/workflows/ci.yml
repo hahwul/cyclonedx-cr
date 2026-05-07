@@ -14,20 +14,26 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-crystal:
+  tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        crystal-version: [1.10.1, 1.15.0, 1.19.0, 1.20.0]
+        crystal: [latest, "1.19.0", "1.20.0"]
     steps:
       - uses: actions/checkout@v6
-      - uses: crystal-lang/install-crystal@v1
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
         with:
-          crystal: ${{ matrix.crystal-version }}
+          crystal: ${{ matrix.crystal }}
       - name: Install dependencies
         run: shards install
+      - name: Check formatting
+        run: crystal tool format --check
       - name: Build
         run: shards build
+      - name: Run tests
+        run: crystal spec
   build-docker:
     runs-on: ubuntu-latest
     strategy:
@@ -36,11 +42,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v4.1.1
-        with:
-          cosign-release: v2.1.1
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
       - name: Setup Docker buildx
@@ -61,15 +62,3 @@ jobs:
           platforms: ${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-  tests:
-    runs-on: ubuntu-latest
-    container:
-      image: crystallang/crystal:1.19.1
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install dependencies
-        run: shards install
-      - name: Build
-        run: shards build
-      - name: Run tests
-        run: crystal spec
