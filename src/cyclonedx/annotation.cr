@@ -15,7 +15,7 @@ module CycloneDX
     def to_xml(xml : XML::Builder)
       xml.element("annotator") do
         @organization.try(&.to_xml(xml, "organization"))
-        @individual.try { |ind| ind.to_xml(xml, "individual") }
+        @individual.try(&.to_xml(xml, "individual"))
       end
     end
   end

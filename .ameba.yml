@@ -1,0 +1,56 @@
+Lint/UselessAssign:
+  Excluded:
+    - spec/**/*.cr
+
+Lint/NotNil:
+  Excluded:
+    - spec/**/*.cr
+
+# JSON test fixtures use %q() multiline literals intentionally.
+Style/MultilineStringLiteral:
+  Excluded:
+    - spec/**/*.cr
+
+# Serializers (to_xml / to_json) have many optional fields driven by spec shape.
+Metrics/CyclomaticComplexity:
+  MaxComplexity: 20
+
+Naming/BlockParameterName:
+  MinNameLength: 1
+  AllowNamesEndingInNumbers: true
+  AllowedNames:
+    - _
+    - a
+    - b
+    - c
+    - d
+    - e
+    - f
+    - g
+    - h
+    - i
+    - j
+    - k
+    - l
+    - m
+    - n
+    - o
+    - p
+    - q
+    - r
+    - s
+    - t
+    - u
+    - v
+    - w
+    - x
+    - y
+    - z
+    - ex
+    - io
+    - id
+    - ip
+    - k1
+    - k2
+    - v1
+    - v2

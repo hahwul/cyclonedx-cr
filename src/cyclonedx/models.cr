@@ -266,7 +266,7 @@ module CycloneDX
           end
         end
         if contacts = @contact
-          contacts.each { |c| c.to_xml(xml, "contact") }
+          contacts.each(&.to_xml(xml, "contact"))
         end
       end
     end
@@ -659,12 +659,12 @@ module CycloneDX
         end
         if inputs_val = @inputs
           xml.element("inputs") do
-            inputs_val.each { |io| io.to_xml(xml, "input") }
+            inputs_val.each(&.to_xml(xml, "input"))
           end
         end
         if outputs_val = @outputs
           xml.element("outputs") do
-            outputs_val.each { |io| io.to_xml(xml, "output") }
+            outputs_val.each(&.to_xml(xml, "output"))
           end
         end
       end

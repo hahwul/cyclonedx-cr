@@ -36,7 +36,7 @@ describe CycloneDX::Validator do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path.includes?("analysis.state") }.should be_true
+      validator.errors.any?(&.path.includes?("analysis.state")).should be_true
     end
 
     it "detects invalid rating score" do
@@ -45,7 +45,7 @@ describe CycloneDX::Validator do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path.includes?("score") }.should be_true
+      validator.errors.any?(&.path.includes?("score")).should be_true
     end
 
     it "detects invalid composition aggregate" do
@@ -53,7 +53,7 @@ describe CycloneDX::Validator do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", compositions: [comp])
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path.includes?("aggregate") }.should be_true
+      validator.errors.any?(&.path.includes?("aggregate")).should be_true
     end
 
     it "detects invalid lifecycle phase" do
@@ -62,7 +62,7 @@ describe CycloneDX::Validator do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: metadata)
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path.includes?("phase") }.should be_true
+      validator.errors.any?(&.path.includes?("phase")).should be_true
     end
 
     it "validates nested sub-components" do
@@ -71,7 +71,7 @@ describe CycloneDX::Validator do
       bom = CycloneDX::BOM.new([parent], "1.6")
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path.includes?("components[0]") }.should be_true
+      validator.errors.any?(&.path.includes?("components[0]")).should be_true
     end
 
     it "reports multiple errors" do
