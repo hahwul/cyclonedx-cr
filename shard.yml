@@ -1,5 +1,12 @@
 name: cyclonedx-cr
 version: 1.3.0
+description: |
+  CycloneDX SBOM generator for Crystal projects.
+  Inspects shard.yml and shard.lock to produce CycloneDX-compatible
+  Software Bills of Materials.
+repository: https://github.com/hahwul/cyclonedx-cr
+homepage: https://github.com/hahwul/cyclonedx-cr
+documentation: https://github.com/hahwul/cyclonedx-cr#readme
 
 authors:
   - hahwul <hahwul@gmail.com>
@@ -8,6 +15,11 @@ targets:
   cyclonedx-cr:
     main: src/main.cr
 
-crystal: 1.6.2
+crystal: ">= 1.6.2"
 
 license: MIT
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    branch: master

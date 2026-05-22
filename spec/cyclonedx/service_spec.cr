@@ -48,8 +48,8 @@ describe CycloneDX::Service do
 
       svc.bom_ref.should eq("api-gateway-ref")
       svc.provider.not_nil!.name.should eq("Cloud Corp")
-      svc.authenticated.should eq(true)
-      svc.x_trust_boundary.should eq(true)
+      svc.authenticated.should be_true
+      svc.x_trust_boundary.should be_true
       svc.trust_zone.should eq("external")
       svc.tags.should eq(["api", "gateway"])
     end

@@ -79,7 +79,7 @@ describe "App Integration" do
       components = JSON.parse(output)["components"].as_a
       components.size.should eq(2)
 
-      names = components.map { |c| c["name"].as_s }
+      names = components.map(&.["name"].as_s)
       names.should contain("kemal")
       names.should contain("ameba")
     end
@@ -88,10 +88,10 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       components = JSON.parse(output)["components"].as_a
 
-      kemal = components.find { |c| c["name"] == "kemal" }.not_nil!
+      kemal = components.find! { |c| c["name"] == "kemal" }
       kemal["scope"].should eq("required")
 
-      ameba = components.find { |c| c["name"] == "ameba" }.not_nil!
+      ameba = components.find! { |c| c["name"] == "ameba" }
       ameba["scope"].should eq("optional")
     end
 
@@ -99,7 +99,7 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       components = JSON.parse(output)["components"].as_a
 
-      kemal = components.find { |c| c["name"] == "kemal" }.not_nil!
+      kemal = components.find! { |c| c["name"] == "kemal" }
       kemal["purl"].should eq("pkg:github/kemalcr/kemal@1.4.0")
     end
 
@@ -107,7 +107,7 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       components = JSON.parse(output)["components"].as_a
 
-      ameba = components.find { |c| c["name"] == "ameba" }.not_nil!
+      ameba = components.find! { |c| c["name"] == "ameba" }
       ameba["purl"].should eq("pkg:github/crystal-ameba/ameba@1.6.4")
     end
 
@@ -115,7 +115,7 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       deps = JSON.parse(output)["dependencies"].as_a
 
-      main_dep = deps.find { |d| d["ref"].as_s.starts_with?("test-app@") }.not_nil!
+      main_dep = deps.find!(&.["ref"].as_s.starts_with?("test-app@"))
       main_dep["dependsOn"].as_a.size.should eq(2)
     end
 
@@ -167,7 +167,7 @@ describe "App Integration" do
       $?.success?.should be_true
       components = JSON.parse(output)["components"].as_a
 
-      my_lib = components.find { |c| c["name"] == "my_lib" }.not_nil!
+      my_lib = components.find! { |c| c["name"] == "my_lib" }
       my_lib["purl"].should eq("pkg:gitlab/myorg/my_lib@2.0.0")
     end
 
@@ -175,7 +175,7 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/gitlab_lock.lock 2>&1`
       components = JSON.parse(output)["components"].as_a
 
-      other_lib = components.find { |c| c["name"] == "other_lib" }.not_nil!
+      other_lib = components.find! { |c| c["name"] == "other_lib" }
       other_lib["purl"].should eq("pkg:gitlab/otherorg/other_lib@1.0.0")
     end
   end

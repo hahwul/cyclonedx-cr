@@ -136,8 +136,8 @@ describe CycloneDX::Component do
       xml_content = XML.build(indent: "  ") do |xml|
         component.to_xml(xml)
       end
-      purl_pos = xml_content.index("<purl>").not_nil!
-      hashes_pos = xml_content.index("<hashes>").not_nil!
+      purl_pos = xml_content.index!("<purl>")
+      hashes_pos = xml_content.index!("<hashes>")
       purl_pos.should be < hashes_pos
     end
 
