@@ -37,31 +37,34 @@ describe CycloneDX::License do
   end
 
   describe "#to_json" do
-    it "serializes to JSON correctly with id" do
+    # CycloneDX 1.6 LicenseChoice wraps the license object as
+    # `{"license": {...}}`, and within that object `id` and `name` are
+    # mutually exclusive (`id` is preferred when both are set).
+    it "wraps the license object as {\"license\":{...}}" do
       license = CycloneDX::License.new(id: "MIT")
       json = license.to_json
-      json.should contain(%("id":"MIT"))
-      json.should_not contain(%("name"))
+      json.should eq(%({"license":{"id":"MIT"}}))
     end
 
-    it "serializes to JSON correctly with name" do
+    it "uses name when id is not present" do
       license = CycloneDX::License.new(name: "My License")
       json = license.to_json
       json.should contain(%("name":"My License"))
       json.should_not contain(%("id"))
     end
 
-    it "serializes to JSON correctly with both" do
+    it "prefers id over name (LicenseChoice does not allow both)" do
       license = CycloneDX::License.new(id: "MIT", name: "MIT License")
       json = license.to_json
       json.should contain(%("id":"MIT"))
-      json.should contain(%("name":"MIT License"))
+      json.should_not contain(%("name"))
     end
 
-    it "serializes url to JSON" do
+    it "serializes url alongside id inside the wrapper" do
       license = CycloneDX::License.new(id: "MIT", url: "https://opensource.org/licenses/MIT")
       json = license.to_json
       json.should contain(%("url":"https://opensource.org/licenses/MIT"))
+      json.should match(/\A\{"license":\{/)
     end
   end
 

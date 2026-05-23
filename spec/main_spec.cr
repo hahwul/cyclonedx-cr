@@ -10,6 +10,15 @@ describe App do
     # For now, we'll just check that the App class can be instantiated.
     app.should_not be_nil
   end
+
+  it "advertises a VERSION matching shard.yml" do
+    shard_yml = File.read(File.expand_path("../shard.yml", __DIR__))
+    if match = shard_yml.match(/^version:\s*(\S+)\s*$/m)
+      App::VERSION.should eq(match[1])
+    else
+      fail "shard.yml has no version field"
+    end
+  end
 end
 
 describe CycloneDX::BOM do

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- License entries now follow the CycloneDX `LicenseChoice` shape:
+  `{"license": {...}}` instead of a flat `{"id":"...","name":"..."}`.
+  XML output already used `<license>...</license>` so this is a JSON-only
+  fix that aligns with the 1.4–1.7 schemas.
+
+### Changed
+- License identifiers that exist in the SPDX license list are now emitted
+  as the canonical SPDX `id` (e.g. `{"license":{"id":"MIT"}}`). Free-form
+  values that are not in the SPDX list still fall through to `name`.
+  Backed by a new dependency on `spdx.cr`.
+
 ## v1.3.0
 
 ### Added

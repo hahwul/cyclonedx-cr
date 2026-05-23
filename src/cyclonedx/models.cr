@@ -43,6 +43,36 @@ module CycloneDX
                    @acknowledgement : String? = nil)
     end
 
+    # CycloneDX LicenseChoice wraps the license object: `{"license": {...}}`.
+    # We override `to_json` (the JSON::Serializable-generated implementation
+    # would produce a flat object). `from_json` keeps the flat shape, which is
+    # fine because we never parse SBOM `licenses` arrays back in.
+    # `id` is preferred when present (canonical SPDX identifier);
+    # `name` is the free-form fallback for licenses not in the SPDX list.
+    def to_json(json : JSON::Builder)
+      json.object do
+        json.field "license" do
+          json.object do
+            if id_val = @id
+              json.field "id", id_val
+            elsif name_val = @name
+              json.field "name", name_val
+            end
+            if url_val = @url
+              json.field "url", url_val
+            end
+            if bom_ref_val = @bom_ref
+              json.field "bom-ref", bom_ref_val
+            end
+            if ack = @acknowledgement
+              json.field "acknowledgement", ack
+            end
+            @text.try { |t| json.field("text") { t.to_json(json) } }
+          end
+        end
+      end
+    end
+
     def to_xml(xml : XML::Builder)
       attrs = {} of String => String
       if bom_ref_val = @bom_ref
