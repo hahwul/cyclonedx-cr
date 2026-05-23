@@ -1,4 +1,5 @@
 require "option_parser"
+require "spdx"
 require "./cyclonedx/bom"
 require "./cyclonedx/component"
 require "./cyclonedx/models"
@@ -9,7 +10,7 @@ require "./shard/shard_lock_file"
 # Main application class for generating CycloneDX SBOMs from Crystal Shard files.
 # Handles command-line argument parsing, file reading, and SBOM generation.
 class App
-  VERSION            = "1.2.0"
+  VERSION            = "1.3.0"
   SUPPORTED_VERSIONS = CycloneDX::BOM::SUPPORTED_VERSIONS
   SUPPORTED_FORMATS  = ["json", "xml", "csv"]
   DEFAULT_VERSION    = "1.6"
@@ -192,15 +193,27 @@ class App
   # SPDX license expression operators
   private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
 
+  # Build a licenses array for a shard.yml license field.
+  #
+  # - Compound expressions (containing AND/OR/WITH) become LicenseExpression.
+  # - Single identifiers that exist in the SPDX catalog use the canonical `id`.
+  # - Identifiers not in the SPDX catalog fall back to `name`.
+  private def build_licenses(license : String) : Array(CycloneDX::License | CycloneDX::LicenseExpression)
+    if license =~ SPDX_EXPRESSION_PATTERN
+      [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
+    elsif Spdx.license?(license)
+      canonical = Spdx.find_license(license).id
+      [CycloneDX::License.new(id: canonical)] of CycloneDX::License | CycloneDX::LicenseExpression
+    else
+      [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
+    end
+  end
+
   # Parses the main component information from a parsed ShardFile.
   private def parse_main_component(shard : ShardFile) : CycloneDX::Component
     licenses = nil
     shard.license.try do |license|
-      if license =~ SPDX_EXPRESSION_PATTERN
-        licenses = [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
-      else
-        licenses = [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
-      end
+      licenses = build_licenses(license)
     end
 
     external_refs = [

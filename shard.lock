@@ -4,3 +4,7 @@ shards:
     git: https://github.com/crystal-ameba/ameba.git
     version: 1.7.0-dev+git.commit.f5d1ef6b995a6c103267dd779426f83e0b25aa8c
 
+  spdx:
+    git: https://github.com/hahwul/spdx.cr.git
+    version: 0.1.0+git.commit.21ac950936830412628cbf631bf48ece6dce9a48
+

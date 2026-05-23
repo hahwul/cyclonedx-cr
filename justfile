@@ -22,6 +22,7 @@ version-check:
     "README.md"
     "github-action/Dockerfile"
     ".github/workflows/release-sbom.yml"
+    "src/app.cr"
   )
   ok=true
   for file in "${files[@]}"; do
@@ -60,6 +61,8 @@ version-update new_version:
   echo "  [UPDATED] github-action/Dockerfile"
   sed -i '' "s|cyclonedx-cr@v$old_version|cyclonedx-cr@v$new_version|g" .github/workflows/release-sbom.yml
   echo "  [UPDATED] .github/workflows/release-sbom.yml"
+  sed -i '' "s|VERSION            = \"$old_version\"|VERSION            = \"$new_version\"|" src/app.cr
+  echo "  [UPDATED] src/app.cr"
   echo ""
   echo "Done! Run 'just version-check' to verify."
 

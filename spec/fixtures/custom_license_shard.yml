@@ -1,0 +1,7 @@
+name: custom-license-app
+version: 0.1.0
+
+authors:
+  - Test Author <test@example.com>
+
+license: Proprietary

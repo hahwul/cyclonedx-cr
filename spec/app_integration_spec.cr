@@ -66,12 +66,14 @@ describe "App Integration" do
       component["author"].should eq("Test Author <test@example.com>")
     end
 
-    it "includes licenses from shard.yml" do
+    it "includes licenses from shard.yml as a wrapped SPDX id" do
+      # MIT is in the SPDX license list, so it should serialize as
+      # `{"license":{"id":"MIT"}}` per CycloneDX 1.6 LicenseChoice.
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       component = JSON.parse(output)["metadata"]["component"]
       licenses = component["licenses"].as_a
       licenses.size.should eq(1)
-      licenses[0]["name"].should eq("MIT")
+      licenses[0]["license"]["id"].should eq("MIT")
     end
 
     it "includes dependencies as components" do
@@ -220,10 +222,23 @@ describe "App Integration" do
       output.should contain("<expression>MIT OR Apache-2.0</expression>")
     end
 
-    it "uses license name for simple licenses" do
+    it "uses the SPDX id (not name) for licenses present in the SPDX list" do
+      # SPDX recognizes "MIT", so we emit the canonical id field rather
+      # than the free-form name field.
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>&1`
       component = JSON.parse(output)["metadata"]["component"]
-      component["licenses"].as_a[0]["name"].should eq("MIT")
+      license = component["licenses"].as_a[0]["license"]
+      license["id"].should eq("MIT")
+      license["name"]?.should be_nil
+    end
+
+    it "falls back to license name for identifiers not in the SPDX list" do
+      output = `#{BINARY} -s #{FIXTURES}/custom_license_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+      component = JSON.parse(output)["metadata"]["component"]
+      license = component["licenses"].as_a[0]["license"]
+      license["name"].should eq("Proprietary")
+      license["id"]?.should be_nil
     end
   end
 end

@@ -19,6 +19,10 @@ crystal: ">= 1.6.2"
 
 license: MIT
 
+dependencies:
+  spdx:
+    github: hahwul/spdx.cr
+
 development_dependencies:
   ameba:
     github: crystal-ameba/ameba
