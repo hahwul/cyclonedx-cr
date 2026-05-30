@@ -8,7 +8,7 @@ This file contains instructions for AI agents working on the `cyclonedx-cr` proj
 
 - **Language:** Crystal
 - **Build System:** Shards
-- **Spec Versions:** CycloneDX 1.4, 1.5, 1.6, 1.7
+- **Spec Versions:** CycloneDX 1.4, 1.5, 1.6
 - **Output Formats:** JSON, XML, CSV
 
 ## Directory Structure

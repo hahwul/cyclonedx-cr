@@ -129,6 +129,52 @@ describe CycloneDX::Validator do
       validator.validate(bom).should be_true
     end
 
+    it "detects an invalid hash algorithm on a deserialized component" do
+      # `from_json` bypasses the constructor guard, so the Validator must
+      # still catch an out-of-enum algorithm.
+      json = %q({
+        "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+        "serialNumber":"urn:uuid:test",
+        "components":[{
+          "type":"library","name":"lib","version":"1.0",
+          "hashes":[{"alg":"SHA-999","content":"deadbeef"}]
+        }]
+      })
+      bom = CycloneDX::BOM.from_json(json)
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path.includes?("hashes[0].alg") && e.message.includes?("SHA-999") }.should be_true
+    end
+
+    it "passes a valid hash algorithm" do
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-512", content: "deadbeef")]
+      comp = CycloneDX::Component.new(name: "lib", version: "1.0", hashes: hashes)
+      bom = CycloneDX::BOM.new([comp], "1.6")
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+    end
+
+    it "detects an invalid external reference type on a deserialized BOM" do
+      json = %q({
+        "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+        "serialNumber":"urn:uuid:test",
+        "components":[],
+        "externalReferences":[{"type":"made-up","url":"https://example.com"}]
+      })
+      bom = CycloneDX::BOM.from_json(json)
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path.includes?("externalReferences[0].type") && e.message.includes?("made-up") }.should be_true
+    end
+
+    it "passes a valid external reference type" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")
+      comp = CycloneDX::Component.new(name: "lib", version: "1.0", external_references: [ref])
+      bom = CycloneDX::BOM.new([comp], "1.6")
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+    end
+
     it "formats error messages with to_s" do
       comp = CycloneDX::Component.new(name: "", version: "1.0")
       bom = CycloneDX::BOM.new([comp], "1.6")

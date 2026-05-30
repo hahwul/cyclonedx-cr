@@ -60,6 +60,22 @@ describe ShardLockFile do
       shard.github.should be_nil
     end
 
+    it "parses a path dependency without a version (defaults to 'unknown')" do
+      yaml = <<-YAML
+        version: 2.0
+        shards:
+          local_shard:
+            path: /path/to/shard
+        YAML
+
+      lock_file = ShardLockFile.from_yaml(yaml)
+      lock_file.shards.size.should eq(1)
+
+      shard = lock_file.shards["local_shard"]
+      shard.path.should eq("/path/to/shard")
+      shard.version.should eq("unknown")
+    end
+
     it "parses an empty shards section" do
       yaml = <<-YAML
         version: 2.0

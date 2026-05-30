@@ -8,8 +8,9 @@ class ShardFile
 
   # The name of the project/shard.
   getter name : String
-  # The version of the project/shard.
-  getter version : String
+  # The version of the project/shard. Optional because a `shard.yml` may omit
+  # it (e.g. an application that is never published); defaults to "unknown".
+  getter version : String = "unknown"
 
   # Optional fields
   getter description : String?

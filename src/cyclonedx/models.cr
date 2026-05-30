@@ -126,11 +126,21 @@ module CycloneDX
   class Hash
     include JSON::Serializable
 
+    # Valid hash algorithm enum values per the CycloneDX schema (`hash-alg`).
+    VALID_ALGORITHMS = [
+      "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512",
+      "SHA3-256", "SHA3-384", "SHA3-512",
+      "BLAKE2b-256", "BLAKE2b-384", "BLAKE2b-512", "BLAKE3",
+    ]
+
     @[JSON::Field(key: "alg")]
     getter algorithm : String
     getter content : String
 
     def initialize(@algorithm : String, @content : String)
+      unless VALID_ALGORITHMS.includes?(@algorithm)
+        raise ArgumentError.new("Invalid hash algorithm '#{@algorithm}'. Valid algorithms are: #{VALID_ALGORITHMS.join(", ")}")
+      end
     end
 
     def to_xml(xml : XML::Builder)
@@ -143,6 +153,22 @@ module CycloneDX
   class ExternalReference
     include JSON::Serializable
 
+    # Valid externalReference type enum values per the CycloneDX schema
+    # (`externalReferenceType`). "other" is the catch-all fallback.
+    VALID_TYPES = [
+      "vcs", "issue-tracker", "website", "advisories", "bom", "mailing-list",
+      "social", "chat", "documentation", "support", "source-distribution",
+      "distribution", "distribution-intake", "license", "build-meta",
+      "build-system", "release-notes", "security-contact", "model-card",
+      "log", "configuration", "evidence", "formulation", "attestation",
+      "threat-model", "adversary-model", "risk-register",
+      "vulnerability-assertion", "exploitability-statement", "pentest-report",
+      "static-analysis-report", "dynamic-analysis-report",
+      "runtime-analysis-report", "component-analysis-report", "maturity-report",
+      "certification-report", "codified-infrastructure", "quality-metrics",
+      "poam", "electronic-signature", "digital-signature", "rfc-9116", "other",
+    ]
+
     @[JSON::Field(key: "type")]
     getter ref_type : String
     getter url : String
@@ -150,6 +176,9 @@ module CycloneDX
     getter hashes : Array(Hash)?
 
     def initialize(@ref_type : String, @url : String, @comment : String? = nil, @hashes : Array(Hash)? = nil)
+      unless VALID_TYPES.includes?(@ref_type)
+        raise ArgumentError.new("Invalid external reference type '#{@ref_type}'. Valid types are: #{VALID_TYPES.join(", ")}")
+      end
     end
 
     def to_xml(xml : XML::Builder)

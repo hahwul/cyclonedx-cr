@@ -171,6 +171,19 @@ describe CycloneDX::Hash do
       hash.algorithm.should eq("SHA-256")
       hash.content.should eq("abc123")
     end
+
+    it "accepts every algorithm in the CycloneDX enum" do
+      CycloneDX::Hash::VALID_ALGORITHMS.each do |alg|
+        hash = CycloneDX::Hash.new(algorithm: alg, content: "abc123")
+        hash.algorithm.should eq(alg)
+      end
+    end
+
+    it "raises on an algorithm not in the enum" do
+      expect_raises(ArgumentError, "Invalid hash algorithm 'SHA-999'") do
+        CycloneDX::Hash.new(algorithm: "SHA-999", content: "abc123")
+      end
+    end
   end
 
   describe "#to_json" do
@@ -205,6 +218,24 @@ describe CycloneDX::ExternalReference do
     it "initializes with comment" do
       ref = CycloneDX::ExternalReference.new(ref_type: "vcs", url: "https://github.com/foo/bar", comment: "Main repo")
       ref.comment.should eq("Main repo")
+    end
+
+    it "accepts the 'other' catch-all type" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "other", url: "https://example.com")
+      ref.ref_type.should eq("other")
+    end
+
+    it "accepts every type in the CycloneDX enum" do
+      CycloneDX::ExternalReference::VALID_TYPES.each do |ref_type|
+        ref = CycloneDX::ExternalReference.new(ref_type: ref_type, url: "https://example.com")
+        ref.ref_type.should eq(ref_type)
+      end
+    end
+
+    it "raises on a type not in the enum" do
+      expect_raises(ArgumentError, "Invalid external reference type 'made-up'") do
+        CycloneDX::ExternalReference.new(ref_type: "made-up", url: "https://example.com")
+      end
     end
   end
 

@@ -44,11 +44,12 @@ describe CycloneDX::BOM do
       json.should contain(%("specVersion":"1.6"))
     end
 
-    it "supports spec version 1.7" do
+    it "rejects the unsupported 1.7 spec version" do
+      # 1.6 is the latest published CycloneDX spec; 1.7 does not exist.
       components = [CycloneDX::Component.new("test", "1.0.2")]
-      bom = CycloneDX::BOM.new(components: components, spec_version: "1.7")
-      json = bom.to_json
-      json.should contain(%("specVersion":"1.7"))
+      expect_raises(ArgumentError, "Unsupported spec version") do
+        CycloneDX::BOM.new(components: components, spec_version: "1.7")
+      end
     end
 
     it "raises on unsupported spec version" do
@@ -58,11 +59,19 @@ describe CycloneDX::BOM do
       end
     end
 
-    it "generates correct XML namespace for spec version 1.7" do
+    it "generates correct XML namespace for spec version 1.6" do
       components = [CycloneDX::Component.new("test", "1.0.2")]
-      bom = CycloneDX::BOM.new(components: components, spec_version: "1.7")
+      bom = CycloneDX::BOM.new(components: components, spec_version: "1.6")
       xml = bom.to_xml
-      xml.should contain(%(xmlns="http://cyclonedx.org/schema/bom/1.7"))
+      xml.should contain(%(xmlns="http://cyclonedx.org/schema/bom/1.6"))
+    end
+
+    it "never emits a 1.7 XML namespace for any supported version" do
+      CycloneDX::BOM::SUPPORTED_VERSIONS.each do |version|
+        components = [CycloneDX::Component.new("test", "1.0.2")]
+        bom = CycloneDX::BOM.new(components: components, spec_version: version)
+        bom.to_xml.should_not contain("/bom/1.7")
+      end
     end
   end
 end

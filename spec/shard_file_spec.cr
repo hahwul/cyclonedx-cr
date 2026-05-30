@@ -44,9 +44,21 @@ describe ShardFile do
       shard.repository.should be_nil
     end
 
-    it "raises an error when required fields are missing" do
+    it "parses a shard.yml without a version (defaults to 'unknown')" do
       yaml = <<-YAML
-        description: Missing name and version
+        name: app-only
+        YAML
+
+      shard = ShardFile.from_yaml(yaml)
+
+      shard.name.should eq "app-only"
+      shard.version.should eq "unknown"
+    end
+
+    it "raises an error when the required name field is missing" do
+      yaml = <<-YAML
+        description: Missing name
+        version: 1.0.0
         YAML
 
       expect_raises(YAML::ParseException) do
