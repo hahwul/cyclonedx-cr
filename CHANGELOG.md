@@ -6,7 +6,16 @@
 - License entries now follow the CycloneDX `LicenseChoice` shape:
   `{"license": {...}}` instead of a flat `{"id":"...","name":"..."}`.
   XML output already used `<license>...</license>` so this is a JSON-only
-  fix that aligns with the 1.4–1.7 schemas.
+  fix that aligns with the 1.4–1.6 schemas.
+- Removed the unsupported CycloneDX "1.7" spec version. 1.6 is the latest
+  published spec; no validator accepts 1.7 and there is no 1.7 schema.
+  Supported versions are now 1.4, 1.5, and 1.6 (default 1.6).
+- `alg` (hash algorithm) and external-reference `type` are now validated
+  against the CycloneDX enums in the model constructors.
+- Version-less `path:` lock entries and version-less `shard.yml` no longer
+  crash; `version` defaults to `"unknown"` when absent.
+- `read_yaml_file` now distinguishes invalid YAML from a missing required
+  attribute and reports an accurate error message for each.
 
 ### Changed
 - License identifiers that exist in the SPDX license list are now emitted

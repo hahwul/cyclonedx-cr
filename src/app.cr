@@ -173,7 +173,14 @@ class App
   private def read_yaml_file(file_path : String, type : T.class) : T forall T
     File.open(file_path) { |file| T.from_yaml(file) }
   rescue ex : YAML::ParseException
-    STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
+    # `YAML::Serializable` raises `YAML::ParseException` both for invalid YAML
+    # syntax and for valid YAML that is missing a required attribute. The two
+    # cases need different guidance, so distinguish them by the message.
+    if (msg = ex.message) && msg.includes?("Missing YAML attribute")
+      STDERR.puts "Error: `#{file_path}` is valid YAML but is missing a required field."
+    else
+      STDERR.puts "Error: Failed to parse `#{file_path}`. Please ensure the file contains valid YAML."
+    end
     STDERR.puts ex.message
     exit(1)
   rescue ex : File::Error

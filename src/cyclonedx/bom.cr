@@ -11,6 +11,7 @@ require "./composition"
 require "./annotation"
 require "./formulation"
 require "./declaration"
+require "./version_gate"
 
 # Represents a CycloneDX Bill of Materials (BOM).
 # This class manages a collection of components and provides methods
@@ -69,7 +70,7 @@ class CycloneDX::BOM
   # Definitions for standards (1.5+).
   getter definitions : Definitions?
 
-  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
+  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6"]
 
   # Initializes a new CycloneDX BOM.
   def initialize(@components : Array(Component), @spec_version : String,
@@ -84,8 +85,27 @@ class CycloneDX::BOM
     end
   end
 
+  # Serializes the BOM to JSON.
+  #
+  # The object model may carry fields newer than the declared `specVersion`
+  # (e.g. a 1.4 BOM that was handed `lifecycles`). To keep the output
+  # schema-valid, the raw serialization is filtered through `VersionGate`,
+  # which strips any key newer than `@spec_version`.
+  def to_json : String
+    raw = String.build do |str|
+      JSON.build(str) { |json| to_json(json) }
+    end
+    VersionGate.filter_json(raw, @spec_version)
+  end
+
   # Serializes the BOM to XML format.
   def to_xml : String
+    raw = build_xml
+    VersionGate.filter_xml(raw, @spec_version)
+  end
+
+  # Builds the raw (unfiltered) XML for the BOM.
+  private def build_xml : String
     String.build do |str|
       XML.build(str) do |xml|
         xml.element("bom", attributes: {

@@ -43,6 +43,21 @@ describe "App Integration" do
       output.should contain("not found")
       $?.success?.should be_false
     end
+
+    it "reports a YAML syntax error accurately for malformed YAML" do
+      output = `#{BINARY} -s #{FIXTURES}/invalid_syntax_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_false
+      output.should contain("ensure the file contains valid YAML")
+      output.should_not contain("missing a required field")
+    end
+
+    it "reports a missing required field without claiming the YAML is invalid" do
+      # missing_name_shard.yml is valid YAML but omits the required `name`.
+      output = `#{BINARY} -s #{FIXTURES}/missing_name_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_false
+      output.should contain("missing a required field")
+      output.should_not contain("ensure the file contains valid YAML")
+    end
   end
 
   describe "JSON output" do

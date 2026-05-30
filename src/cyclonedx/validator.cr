@@ -1,5 +1,6 @@
 require "./bom"
 require "./formulation"
+require "./version_gate"
 
 module CycloneDX
   class ValidationError
@@ -36,6 +37,12 @@ module CycloneDX
         validate_component(comp, "$.components[#{i}]")
       end
 
+      if ext_refs = bom.external_references
+        ext_refs.each_with_index do |ref, i|
+          validate_external_reference(ref, "$.externalReferences[#{i}]")
+        end
+      end
+
       if svcs = bom.services
         svcs.each_with_index do |svc, i|
           validate_service(svc, "$.services[#{i}]")
@@ -63,6 +70,18 @@ module CycloneDX
       if md = bom.metadata
         validate_metadata(md, "$.metadata")
       end
+
+      validate_spec_version_fields(bom)
+    end
+
+    # Flags any field that is populated on the object model but is newer than
+    # the declared `specVersion`. Such fields would be stripped on
+    # serialization, so surfacing them as errors tells direct object-model
+    # users their BOM is over-specified for the version they declared.
+    private def validate_spec_version_fields(bom : BOM)
+      VersionGate.each_violation(bom) do |v|
+        add_error("#{v.path}.#{v.field}", "field '#{v.field}' requires specVersion >= #{v.min_version}, but BOM declares #{bom.spec_version}")
+      end
     end
 
     private def validate_component(comp : Component, path : String)
@@ -79,9 +98,39 @@ module CycloneDX
         end
       end
 
+      if hashes = comp.hashes
+        hashes.each_with_index do |hash, i|
+          validate_hash(hash, "#{path}.hashes[#{i}]")
+        end
+      end
+
+      if ext_refs = comp.external_references
+        ext_refs.each_with_index do |ref, i|
+          validate_external_reference(ref, "#{path}.externalReferences[#{i}]")
+        end
+      end
+
       if sub = comp.components
         sub.each_with_index do |c, i|
           validate_component(c, "#{path}.components[#{i}]")
+        end
+      end
+    end
+
+    private def validate_hash(hash : Hash, path : String)
+      unless Hash::VALID_ALGORITHMS.includes?(hash.algorithm)
+        add_error("#{path}.alg", "invalid hash algorithm '#{hash.algorithm}', valid: #{Hash::VALID_ALGORITHMS.join(", ")}")
+      end
+    end
+
+    private def validate_external_reference(ref : ExternalReference, path : String)
+      unless ExternalReference::VALID_TYPES.includes?(ref.ref_type)
+        add_error("#{path}.type", "invalid external reference type '#{ref.ref_type}', valid: #{ExternalReference::VALID_TYPES.join(", ")}")
+      end
+
+      if hashes = ref.hashes
+        hashes.each_with_index do |hash, i|
+          validate_hash(hash, "#{path}.hashes[#{i}]")
         end
       end
     end

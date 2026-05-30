@@ -14,8 +14,9 @@ end
 class ShardLockEntry
   include YAML::Serializable
 
-  # The version of the locked dependency.
-  getter version : String
+  # The version of the locked dependency. Optional because `path:` entries
+  # (and some other lock formats) may omit it; defaults to "unknown".
+  getter version : String = "unknown"
   # The Git URL if the dependency is sourced from a Git repository.
   getter git : String?
   # The GitHub repository path (e.g., "owner/repo") if sourced from GitHub.
