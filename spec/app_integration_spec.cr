@@ -310,11 +310,25 @@ describe "App Integration" do
     it "preserves case for gitlab (case-sensitive type)" do
       canon_purls["gl_key"].should eq("pkg:gitlab/MyOrg/MyLib@2.0.0")
     end
+
+    it "does not leak an explicit port from an ssh github URL into the PURL" do
+      canon_purls["gh_ssh_port"].should eq("pkg:github/owner/repo@4.0.0")
+    end
+
+    it "does not leak an explicit port from a gitlab URL into the PURL namespace" do
+      canon_purls["gl_port"].should eq("pkg:gitlab/group/repo@5.0.0")
+    end
   end
 
   describe "robustness" do
     it "rejects stray positional arguments" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock stray 2>&1`
+      $?.success?.should be_false
+      output.should contain("Unexpected argument")
+    end
+
+    it "rejects a bare dash argument" do
+      output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock - 2>&1`
       $?.success?.should be_false
       output.should contain("Unexpected argument")
     end

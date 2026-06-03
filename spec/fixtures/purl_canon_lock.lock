@@ -18,3 +18,9 @@ shards:
   gl_key:
     gitlab: MyOrg/MyLib
     version: 2.0.0
+  gh_ssh_port:
+    git: ssh://git@github.com:22/Owner/Repo.git
+    version: 4.0.0
+  gl_port:
+    git: https://gitlab.com:8080/group/repo.git
+    version: 5.0.0

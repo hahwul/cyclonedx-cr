@@ -30,12 +30,17 @@ class App
   SCOPE_OPTIONAL = "optional"
 
   # Regex patterns for extracting owner/repo from Git URLs.
+  #
+  # The host may be followed by an explicit `:<port>/` (e.g. an
+  # `ssh://git@github.com:22/owner/repo` remote); that port must be consumed,
+  # not captured as part of the namespace. `(?::\d+\/|[\/:])` matches either a
+  # `:port/` or the ordinary `/` (scheme URL) / `:` (scp-form) separator.
   # A trailing `.git` suffix and any trailing slashes are tolerated. GitHub and
   # Bitbucket repos are exactly `owner/repo`; GitLab additionally supports
   # subgroups (`group/subgroup/.../repo`), so its pattern captures the full path.
-  private GITHUB_REPO_PATTERN    = /github\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
-  private GITLAB_REPO_PATTERN    = /gitlab\.com[\/:]([^\/].*?)(?:\.git)?\/*$/
-  private BITBUCKET_REPO_PATTERN = /bitbucket\.org[\/:]([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
+  private GITHUB_REPO_PATTERN    = /github\.com(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
+  private GITLAB_REPO_PATTERN    = /gitlab\.com(?::\d+\/|[\/:])([^\/].*?)(?:\.git)?\/*$/
+  private BITBUCKET_REPO_PATTERN = /bitbucket\.org(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
 
   # Holds parsed command-line options.
   record Options,
@@ -85,11 +90,13 @@ class App
         exit(1)
       end
       parser.unknown_args do |before, after|
-        # Unrecognised flags also appear here, but they are reported by
-        # `invalid_option`; only genuine positional arguments (which this tool
-        # never accepts) are flagged here so a dropped dash like
+        # Unrecognised flags (e.g. `--foo`, `-x`) also appear here, but they are
+        # reported by `invalid_option`, so they are filtered out to avoid
+        # double-reporting. A bare `-` is NOT routed to `invalid_option`, so it
+        # is kept and flagged here; genuine positional arguments (which this tool
+        # never accepts) are likewise flagged so a dropped dash like
         # `spec-version 1.5` is not silently ignored.
-        positionals = (before + after).reject(&.starts_with?('-'))
+        positionals = (before + after).reject { |arg| arg.starts_with?('-') && arg != "-" }
         unless positionals.empty?
           STDERR.puts "Error: Unexpected argument(s): #{positionals.join(", ")}. This tool takes options only."
           STDERR.puts parser
