@@ -1,0 +1,8 @@
+version: 2.0
+shards:
+  "":
+    github: owner/blank
+    version: 1.0.0
+  good:
+    github: owner/good
+    version: 2.0.0

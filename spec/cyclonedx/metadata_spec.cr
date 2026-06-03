@@ -143,6 +143,26 @@ describe CycloneDX::Metadata do
       xml_string.should contain("<name>Sup Corp</name>")
     end
 
+    it "emits lifecycles immediately after timestamp and before tools (XSD order)" do
+      lc = CycloneDX::Lifecycle.new(phase: "build")
+      tool = CycloneDX::Tool.new(name: "t")
+      metadata = CycloneDX::Metadata.new(
+        timestamp: "2024-01-01T00:00:00Z", lifecycles: [lc], tools: [tool]
+      )
+
+      io = IO::Memory.new
+      xml = XML::Builder.new(io)
+      metadata.to_xml(xml)
+      xml.flush
+      xml_string = io.to_s
+
+      ts_pos = xml_string.index!("<timestamp>")
+      lc_pos = xml_string.index!("<lifecycles>")
+      tools_pos = xml_string.index!("<tools>")
+      ts_pos.should be < lc_pos
+      lc_pos.should be < tools_pos
+    end
+
     it "serializes properties to XML" do
       props = [CycloneDX::Property.new(name: "cdx:tool:name", value: "test")]
       metadata = CycloneDX::Metadata.new(properties: props)

@@ -79,6 +79,15 @@ module CycloneDX
         "bom-ref"         => "1.6",
         "acknowledgement" => "1.6",
       },
+      # A `LicenseExpression` sits directly in a licenses array (no `license`
+      # wrapper key), so its 1.6+ `bom-ref`/`acknowledgement` keys are gated at
+      # the array-entry level. The `{ "license": {...} }` wrapper carries only
+      # the `license` key here, so it is unaffected.
+      licenses_array: {
+        # 1.6+
+        "bom-ref"         => "1.6",
+        "acknowledgement" => "1.6",
+      },
     }
 
     # ---- JSON filtering --------------------------------------------------
@@ -188,8 +197,9 @@ module CycloneDX
           next
         end
 
-        # License-level 1.6 attributes.
-        if name == "license"
+        # License-level 1.6 attributes. These live on both the `<license>`
+        # wrapper element and a bare `<expression>` element (a LicenseExpression).
+        if name == "license" || name == "expression"
           XML_LICENSE_ATTRS.each do |attr, min|
             if newer?(min, spec_version) && child[attr]?
               child.delete(attr)

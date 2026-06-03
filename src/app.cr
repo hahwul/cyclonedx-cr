@@ -1,4 +1,5 @@
 require "option_parser"
+require "uri"
 require "spdx"
 require "./cyclonedx/bom"
 require "./cyclonedx/component"
@@ -23,13 +24,23 @@ class App
   REF_TYPE_VCS               = "vcs"
   PURL_GITHUB_PREFIX         = "pkg:github/"
   PURL_GITLAB_PREFIX         = "pkg:gitlab/"
+  PURL_BITBUCKET_PREFIX      = "pkg:bitbucket/"
 
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
 
-  # Regex patterns for extracting owner/repo from Git URLs
-  private GITHUB_REPO_PATTERN = /github\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/
-  private GITLAB_REPO_PATTERN = /gitlab\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/
+  # Regex patterns for extracting owner/repo from Git URLs.
+  #
+  # The host may be followed by an explicit `:<port>/` (e.g. an
+  # `ssh://git@github.com:22/owner/repo` remote); that port must be consumed,
+  # not captured as part of the namespace. `(?::\d+\/|[\/:])` matches either a
+  # `:port/` or the ordinary `/` (scheme URL) / `:` (scp-form) separator.
+  # A trailing `.git` suffix and any trailing slashes are tolerated. GitHub and
+  # Bitbucket repos are exactly `owner/repo`; GitLab additionally supports
+  # subgroups (`group/subgroup/.../repo`), so its pattern captures the full path.
+  private GITHUB_REPO_PATTERN    = /github\.com(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
+  private GITLAB_REPO_PATTERN    = /gitlab\.com(?::\d+\/|[\/:])([^\/].*?)(?:\.git)?\/*$/
+  private BITBUCKET_REPO_PATTERN = /bitbucket\.org(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
 
   # Holds parsed command-line options.
   record Options,
@@ -77,6 +88,20 @@ class App
         STDERR.puts "Error: Missing value for option '#{flag}'."
         STDERR.puts parser
         exit(1)
+      end
+      parser.unknown_args do |before, after|
+        # Unrecognised flags (e.g. `--foo`, `-x`) also appear here, but they are
+        # reported by `invalid_option`, so they are filtered out to avoid
+        # double-reporting. A bare `-` is NOT routed to `invalid_option`, so it
+        # is kept and flagged here; genuine positional arguments (which this tool
+        # never accepts) are likewise flagged so a dropped dash like
+        # `spec-version 1.5` is not silently ignored.
+        positionals = (before + after).reject { |arg| arg.starts_with?('-') && arg != "-" }
+        unless positionals.empty?
+          STDERR.puts "Error: Unexpected argument(s): #{positionals.join(", ")}. This tool takes options only."
+          STDERR.puts parser
+          exit(1)
+        end
       end
     end
 
@@ -202,11 +227,15 @@ class App
 
   # Build a licenses array for a shard.yml license field.
   #
-  # - Compound expressions (containing AND/OR/WITH) become LicenseExpression.
+  # - Strings that contain an AND/OR/WITH operator AND parse as a valid SPDX
+  #   expression become a LicenseExpression. The validity check matters: a
+  #   free-form string like "Free for personal OR commercial use" contains
+  #   "OR" but is not a license expression, so it must NOT be emitted as one
+  #   (an invalid `expression` fails CycloneDX/SPDX validation).
   # - Single identifiers that exist in the SPDX catalog use the canonical `id`.
-  # - Identifiers not in the SPDX catalog fall back to `name`.
+  # - Everything else falls back to the free-form `name`.
   private def build_licenses(license : String) : Array(CycloneDX::License | CycloneDX::LicenseExpression)
-    if license =~ SPDX_EXPRESSION_PATTERN
+    if license =~ SPDX_EXPRESSION_PATTERN && Spdx.valid_expression?(license)
       [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
     elsif Spdx.license?(license)
       canonical = Spdx.find_license(license).id
@@ -247,7 +276,14 @@ class App
   private def parse_dependencies(file_path : String, dev_dep_names : Set(String)) : Array(CycloneDX::Component)
     lock_file = read_yaml_file(file_path, ShardLockFile)
 
-    lock_file.shards.map do |name, details|
+    lock_file.shards.compact_map do |name, details|
+      # A component name is required and must be non-empty; an empty/blank lock
+      # key would yield a schema-invalid component, so skip it with a warning.
+      if name.blank?
+        STDERR.puts "Warning: skipping lock entry with an empty shard name."
+        next
+      end
+
       scope = dev_dep_names.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED
 
       CycloneDX::Component.new(
@@ -265,18 +301,25 @@ class App
   # Each dependency has an empty dependsOn list (transitive deps not available from shard.lock).
   private def build_dependency_graph(main_component : CycloneDX::Component,
                                      dependencies : Array(CycloneDX::Component)) : Array(CycloneDX::Dependency)
-    dep_refs = dependencies.compact_map(&.bom_ref)
-
     graph = [] of CycloneDX::Dependency
+    seen = Set(String).new
 
-    # Main component depends on all dependencies
-    if main_ref = main_component.bom_ref
+    main_ref = main_component.bom_ref
+
+    # Main component depends on all dependencies. De-duplicate the refs and drop
+    # the main component's own ref so the graph never contains a self-edge (this
+    # can happen if a locked dependency shares the project's name@version).
+    if main_ref
+      dep_refs = dependencies.compact_map(&.bom_ref).reject { |r| r == main_ref }.uniq!
       graph << CycloneDX::Dependency.new(ref: main_ref, depends_on: dep_refs)
+      seen << main_ref
     end
 
-    # Each dependency listed with empty dependsOn
+    # Each dependency listed once with an empty dependsOn.
     dependencies.each do |dep|
       if ref = dep.bom_ref
+        next if seen.includes?(ref)
+        seen << ref
         graph << CycloneDX::Dependency.new(ref: ref)
       end
     end
@@ -285,23 +328,53 @@ class App
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.
-  # Supports GitHub and GitLab repositories.
+  # Supports GitHub, GitLab and (via Git URL) Bitbucket repositories.
   private def generate_purl(details : ShardLockEntry) : String?
     if github_repo = details.github
-      "#{PURL_GITHUB_PREFIX}#{github_repo}@#{details.version}"
+      build_purl(PURL_GITHUB_PREFIX, github_repo, details.version, lowercase: true)
     elsif gitlab_repo = details.gitlab
-      "#{PURL_GITLAB_PREFIX}#{gitlab_repo}@#{details.version}"
+      build_purl(PURL_GITLAB_PREFIX, gitlab_repo, details.version, lowercase: false)
     elsif git_url = details.git
       parse_purl_from_git_url(git_url, details.version)
     end
   end
 
-  # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab).
+  # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab,
+  # Bitbucket). Returns nil for unrecognised hosts.
   private def parse_purl_from_git_url(git_url : String, version : String) : String?
     if git_url =~ GITHUB_REPO_PATTERN
-      "#{PURL_GITHUB_PREFIX}#{$1}@#{version}"
+      build_purl(PURL_GITHUB_PREFIX, $1, version, lowercase: true)
     elsif git_url =~ GITLAB_REPO_PATTERN
-      "#{PURL_GITLAB_PREFIX}#{$1}@#{version}"
+      build_purl(PURL_GITLAB_PREFIX, $1, version, lowercase: false)
+    elsif git_url =~ BITBUCKET_REPO_PATTERN
+      build_purl(PURL_BITBUCKET_PREFIX, $1, version, lowercase: true)
     end
+  end
+
+  # Assembles a canonical PURL from a repo path ("owner/repo", or for GitLab a
+  # longer "group/subgroup/repo") and a version.
+  #
+  # Per the package-url spec every component is percent-encoded so reserved
+  # characters (space, '+', '@', '&', '#', ...) cannot corrupt the PURL grammar.
+  # The github and bitbucket types define the namespace/name as case-insensitive
+  # and require it lowercased; gitlab paths are case-sensitive and left as-is.
+  # The version is always percent-encoded but never case-folded.
+  private def build_purl(prefix : String, repo_path : String, version : String, lowercase : Bool) : String
+    repo_path = repo_path.downcase if lowercase
+    "#{prefix}#{encode_purl_path(repo_path)}@#{encode_purl_segment(version)}"
+  end
+
+  # Percent-encodes a single PURL component. `URI.encode_path_segment` leaves
+  # exactly the PURL unreserved set (A-Z a-z 0-9 . - _ ~) untouched and encodes
+  # everything else, which matches the spec's component encoding rules.
+  private def encode_purl_segment(value : String) : String
+    URI.encode_path_segment(value)
+  end
+
+  # Percent-encodes a "namespace/name" path one slash-delimited segment at a
+  # time so the '/' separators are preserved while reserved characters inside
+  # each segment are still encoded.
+  private def encode_purl_path(path : String) : String
+    path.split('/').map { |segment| encode_purl_segment(segment) }.join('/')
   end
 end

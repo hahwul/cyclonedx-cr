@@ -3,6 +3,36 @@
 ## Unreleased
 
 ### Fixed
+- PURLs are now percent-encoded per the package-url spec. Reserved characters
+  in the namespace/name and version (space, `+`, `@`, `&`, `#`, ...) are
+  encoded, so git-resolved versions like `0.1.0+git.commit.<sha>` produce a
+  valid `pkg:...@0.1.0%2Bgit.commit.<sha>` instead of a malformed PURL.
+- PURL namespace/name are lowercased for the case-insensitive `github` and
+  `bitbucket` types (e.g. `pkg:github/sysexitcode/foo`), matching the canonical
+  form used by other tooling. `gitlab` paths are case-sensitive and preserved.
+- Git URLs with a trailing slash (e.g. `https://github.com/owner/repo/`) now
+  yield a PURL instead of none.
+- GitLab subgroup git URLs (`gitlab.com/group/subgroup/repo`) now produce a
+  full-path PURL, consistent with the explicit `gitlab:` key.
+- Bitbucket git URLs now produce `pkg:bitbucket/...` PURLs.
+- A free-form license string that merely contains `AND`/`OR`/`WITH` (e.g.
+  "Free for personal OR commercial use") is no longer mis-emitted as an invalid
+  SPDX `expression`; it now falls back to a `license.name`. Only strings that
+  parse as a valid SPDX expression become a `LicenseExpression`.
+- XML element ordering now matches the CycloneDX XSD `<sequence>` for both
+  `component` (hashes/licenses before copyright/cpe/purl; pedigree before
+  externalReferences; components before evidence; releaseNotes before modelCard)
+  and `metadata` (lifecycles immediately after timestamp). Previously the output
+  could fail XSD validation.
+- Spec-version gating now strips the 1.6-only `bom-ref`/`acknowledgement` from a
+  `LicenseExpression` in both JSON and XML, so a 1.4/1.5 BOM no longer leaks
+  1.6-only fields (the `Validator` already flagged them; the filters now agree).
+- The dependency graph no longer contains a self-referential edge or duplicate
+  entries when a locked dependency shares the project's `name@version`.
+- Lock entries with an empty shard name are skipped with a warning instead of
+  emitting a schema-invalid empty-name component.
+- Stray positional arguments (e.g. a dropped dash in `spec-version 1.5`) are now
+  rejected with an error instead of being silently ignored.
 - License entries now follow the CycloneDX `LicenseChoice` shape:
   `{"license": {...}}` instead of a flat `{"id":"...","name":"..."}`.
   XML output already used `<license>...</license>` so this is a JSON-only
@@ -22,6 +52,9 @@
   as the canonical SPDX `id` (e.g. `{"license":{"id":"MIT"}}`). Free-form
   values that are not in the SPDX list still fall through to `name`.
   Backed by a new dependency on `spdx.cr`.
+- CSV output now includes the root application component (from
+  `metadata.component`) as its first row, making it consistent with the
+  JSON/XML output.
 
 ## v1.3.0
 

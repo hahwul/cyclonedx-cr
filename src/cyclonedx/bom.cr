@@ -165,9 +165,16 @@ class CycloneDX::BOM
   end
 
   # Serializes the BOM to CSV format.
+  #
+  # The root component lives in `metadata.component` (not in `components`), so it
+  # is emitted as the first row to keep the CSV consistent with the JSON/XML
+  # output, which both represent the root component.
   def to_csv : String
     CSV.build do |csv|
       csv.row "Name", "Version", "PURL", "Type"
+      if root = @metadata.try(&.component)
+        csv.row root.name, root.version, root.purl, root.component_type
+      end
       @components.each do |component|
         csv.row component.name, component.version, component.purl, component.component_type
       end
