@@ -929,12 +929,15 @@ module CycloneDX
                    @description : String? = nil, @bom_ref : String? = nil)
     end
 
-    def to_xml(xml : XML::Builder)
+    # `element_name` differs by context: a `componentDataType` is named
+    # `<data>` directly under a component, but `<dataset>` inside a model card's
+    # `<datasets>` collection.
+    def to_xml(xml : XML::Builder, element_name : String = "dataset")
       attrs = {} of String => String
       if bom_ref_val = @bom_ref
         attrs["bom-ref"] = bom_ref_val
       end
-      xml.element("dataset", attributes: attrs) do
+      xml.element(element_name, attributes: attrs) do
         if dt = @data_type
           xml.element("type") { xml.text dt }
         end

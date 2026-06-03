@@ -1,0 +1,5 @@
+version: 2.0
+shards:
+  dup:
+    github: owner/dup
+    version: 9.9.9

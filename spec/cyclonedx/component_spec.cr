@@ -125,20 +125,27 @@ describe CycloneDX::Component do
       xml_content.should contain %(<url>https://github.com/example/xml-lib</url>)
     end
 
-    it "outputs purl before hashes in XML (spec order)" do
+    it "outputs hashes and licenses before copyright/cpe/purl in XML (XSD sequence order)" do
+      # Per the CycloneDX componentType XSD <sequence>, hashes and licenses
+      # precede copyright, cpe and purl. (The previous version of this test
+      # asserted the reverse, which was an XSD-invalid ordering.)
       hashes = [CycloneDX::Hash.new(algorithm: "SHA-256", content: "abc123")]
+      licenses = [CycloneDX::License.new(name: "MIT")] of CycloneDX::License | CycloneDX::LicenseExpression
       component = CycloneDX::Component.new(
         name: "lib", version: "1.0.0",
         purl: "pkg:github/owner/lib@1.0.0",
         cpe: "cpe:2.3:a:owner:lib:1.0.0",
         hashes: hashes,
+        licenses: licenses,
       )
       xml_content = XML.build(indent: "  ") do |xml|
         component.to_xml(xml)
       end
-      purl_pos = xml_content.index!("<purl>")
       hashes_pos = xml_content.index!("<hashes>")
-      purl_pos.should be < hashes_pos
+      licenses_pos = xml_content.index!("<licenses>")
+      purl_pos = xml_content.index!("<purl>")
+      hashes_pos.should be < purl_pos
+      licenses_pos.should be < purl_pos
     end
 
     it "handles optional fields being nil in XML" do
@@ -172,6 +179,22 @@ describe CycloneDX::Component do
 
       xml_content.should contain %(<properties>)
       xml_content.should contain %(<property name="cdx:tool:name">test</property>)
+    end
+
+    it "serializes component.data as repeated <data> elements (XSD componentDataType)" do
+      component = CycloneDX::Component.new(
+        name: "ml", version: "1.0.0",
+        data: [CycloneDX::ComponentData.new(data_type: "dataset", name: "training-set")],
+      )
+      xml_content = XML.build(indent: "  ") do |xml|
+        component.to_xml(xml)
+      end
+      # The componentDataType element is <data> directly, not a <data> wrapper
+      # around <dataset> (that legacy shape failed XSD validation).
+      xml_content.should contain %(<data>)
+      xml_content.should contain %(<type>dataset</type>)
+      xml_content.should contain %(<name>training-set</name>)
+      xml_content.should_not contain %(<dataset>)
     end
   end
 

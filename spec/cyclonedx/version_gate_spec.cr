@@ -36,6 +36,19 @@ private def core_bom(version : String) : CycloneDX::BOM
   CycloneDX::BOM.new([dep], version, metadata: md, dependencies: graph)
 end
 
+# Builds a one-component BOM whose only license is a `LicenseExpression`
+# carrying the 1.6-only `bom-ref` and `acknowledgement` fields.
+private def expr_bom(version : String) : CycloneDX::BOM
+  expr = CycloneDX::LicenseExpression.new(
+    expression: "MIT OR Apache-2.0", bom_ref: "expr-1", acknowledgement: "concluded"
+  )
+  comp = CycloneDX::Component.new(
+    name: "lib", version: "1.0",
+    licenses: [expr] of CycloneDX::License | CycloneDX::LicenseExpression
+  )
+  CycloneDX::BOM.new([comp], version)
+end
+
 describe CycloneDX::VersionGate do
   describe "(a) metadata.lifecycles / bom.annotations gating" do
     it "does NOT emit lifecycles or annotations when declared as 1.4" do
@@ -227,6 +240,35 @@ describe CycloneDX::VersionGate do
       bom = CycloneDX::BOM.new([comp], "1.4")
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_true
+    end
+  end
+
+  describe "(f) LicenseExpression bom-ref/acknowledgement gating (1.6+)" do
+    it "strips bom-ref/acknowledgement from a LicenseExpression in 1.4 JSON" do
+      json = expr_bom("1.4").to_json
+      json.should contain(%("expression":"MIT OR Apache-2.0"))
+      json.should_not contain(%("bom-ref":"expr-1"))
+      json.should_not contain(%("acknowledgement"))
+    end
+
+    it "strips bom-ref/acknowledgement attributes from an <expression> in 1.4 XML" do
+      xml = expr_bom("1.4").to_xml
+      xml.should contain("MIT OR Apache-2.0")
+      xml.should_not contain(%(bom-ref="expr-1"))
+      xml.should_not contain("acknowledgement")
+    end
+
+    it "keeps bom-ref/acknowledgement on a LicenseExpression in 1.6 JSON" do
+      json = expr_bom("1.6").to_json
+      json.should contain(%("bom-ref":"expr-1"))
+      json.should contain(%("acknowledgement":"concluded"))
+    end
+
+    it "reports validator violations that the filters actually strip (consistency)" do
+      validator = CycloneDX::Validator.new
+      validator.validate(expr_bom("1.4")).should be_false
+      validator.errors.any?(&.path.includes?("bom-ref")).should be_true
+      validator.errors.any?(&.path.includes?("acknowledgement")).should be_true
     end
   end
 end

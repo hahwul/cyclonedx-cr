@@ -23,9 +23,17 @@ module CycloneDX
     end
 
     def to_xml(xml : XML::Builder)
+      # Element order follows the CycloneDX metadataType XSD <sequence>:
+      # timestamp, lifecycles, tools, authors, component, manufacturer,
+      # manufacture, supplier, licenses, properties.
       xml.element("metadata") do
         if ts = @timestamp
           xml.element("timestamp") { xml.text ts }
+        end
+        if lifecycles_val = @lifecycles
+          xml.element("lifecycles") do
+            lifecycles_val.each(&.to_xml(xml))
+          end
         end
         if tools_val = @tools
           xml.element("tools") do
@@ -40,11 +48,6 @@ module CycloneDX
         @component.try(&.to_xml(xml))
         @manufacture.try(&.to_xml(xml, "manufacture"))
         @supplier.try(&.to_xml(xml, "supplier"))
-        if lifecycles_val = @lifecycles
-          xml.element("lifecycles") do
-            lifecycles_val.each(&.to_xml(xml))
-          end
-        end
 
         if props = @properties
           xml.element("properties") do

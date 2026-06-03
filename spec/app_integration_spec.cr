@@ -4,6 +4,19 @@ require "json"
 BINARY   = "bin/cyclonedx-cr"
 FIXTURES = "spec/fixtures"
 
+# Runs the binary against the PURL-canonicalization fixture and returns a
+# name => purl map for the emitted components.
+private def canon_purls : Hash(String, String)
+  output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/purl_canon_lock.lock 2>&1`
+  result = {} of String => String
+  JSON.parse(output)["components"].as_a.each do |c|
+    if purl = c["purl"]?
+      result[c["name"].as_s] = purl.as_s
+    end
+  end
+  result
+end
+
 describe "App Integration" do
   describe "CLI argument parsing" do
     it "shows help with -h" do
@@ -153,12 +166,15 @@ describe "App Integration" do
   end
 
   describe "CSV output" do
-    it "generates CSV with header and components" do
+    it "generates CSV with header, root component, and dependencies" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --output-format csv 2>&1`
       $?.success?.should be_true
       lines = output.strip.split("\n")
       lines[0].should eq("Name,Version,PURL,Type")
-      lines.size.should eq(3) # header + 2 dependencies
+      lines.size.should eq(4) # header + root application + 2 dependencies
+      # The root application component (from metadata.component) is included so
+      # the CSV is consistent with the JSON/XML output.
+      output.should contain("test-app,0.1.0,,application")
     end
   end
 
@@ -254,6 +270,72 @@ describe "App Integration" do
       license = component["licenses"].as_a[0]["license"]
       license["name"].should eq("Proprietary")
       license["id"]?.should be_nil
+    end
+
+    it "does NOT treat a free-form string containing OR as an SPDX expression" do
+      # "Free for personal OR commercial use" contains "OR" but is not a valid
+      # SPDX expression, so it must fall back to the free-form license name.
+      output = `#{BINARY} -s #{FIXTURES}/freeform_or_license_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+      component = JSON.parse(output)["metadata"]["component"]
+      licenses = component["licenses"].as_a
+      licenses.size.should eq(1)
+      licenses[0]["expression"]?.should be_nil
+      licenses[0]["license"]["name"].should eq("Free for personal OR commercial use")
+    end
+  end
+
+  describe "PURL canonicalization and encoding" do
+    it "lowercases the namespace/name for github (case-insensitive type)" do
+      canon_purls["gh_upper"].should eq("pkg:github/sysexitcode/foo@1.0.0")
+    end
+
+    it "still produces a PURL when a git URL has a trailing slash" do
+      canon_purls["gh_trailing"].should eq("pkg:github/owner/repo@1.2.3")
+    end
+
+    it "percent-encodes reserved characters in the version" do
+      # '+' build metadata must be encoded as %2B per the PURL spec.
+      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@0.1.0%2Bgit.commit.abc")
+    end
+
+    it "emits a pkg:bitbucket PURL for bitbucket git URLs (lowercased)" do
+      canon_purls["bb_url"].should eq("pkg:bitbucket/team/proj@3.0.0")
+    end
+
+    it "captures the full path for gitlab subgroup git URLs" do
+      canon_purls["gl_subgroup"].should eq("pkg:gitlab/group/subgroup/repo@1.1.1")
+    end
+
+    it "preserves case for gitlab (case-sensitive type)" do
+      canon_purls["gl_key"].should eq("pkg:gitlab/MyOrg/MyLib@2.0.0")
+    end
+  end
+
+  describe "robustness" do
+    it "rejects stray positional arguments" do
+      output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock stray 2>&1`
+      $?.success?.should be_false
+      output.should contain("Unexpected argument")
+    end
+
+    it "skips lock entries with an empty shard name" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/empty_name_lock.lock 2>&1`
+      $?.success?.should be_true
+      output.should contain("empty shard name")
+      bom = JSON.parse(output.lines.reject(&.starts_with?("Warning")).join("\n"))
+      names = bom["components"].as_a.map(&.["name"].as_s)
+      names.should eq(["good"])
+    end
+
+    it "does not emit a self-referential dependency edge on a name@version collision" do
+      output = `#{BINARY} -s #{FIXTURES}/self_dep_shard.yml -i #{FIXTURES}/self_dep_lock.lock 2>&1`
+      $?.success?.should be_true
+      deps = JSON.parse(output)["dependencies"].as_a
+      root = deps.find!(&.["ref"].as_s.== "dup@9.9.9")
+      root["dependsOn"].as_a.should be_empty
+      # the same ref must not appear as more than one top-level dependency entry
+      deps.count(&.["ref"].as_s.== "dup@9.9.9").should eq(1)
     end
   end
 end

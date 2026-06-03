@@ -1,0 +1,20 @@
+version: 2.0
+shards:
+  gh_upper:
+    github: SysExitCode/Foo
+    version: 1.0.0
+  gh_trailing:
+    git: https://github.com/Owner/Repo/
+    version: 1.2.3
+  gh_buildmeta:
+    github: hahwul/spdx.cr
+    version: "0.1.0+git.commit.abc"
+  bb_url:
+    git: https://bitbucket.org/Team/Proj.git
+    version: 3.0.0
+  gl_subgroup:
+    git: https://gitlab.com/group/subgroup/repo.git
+    version: 1.1.1
+  gl_key:
+    gitlab: MyOrg/MyLib
+    version: 2.0.0

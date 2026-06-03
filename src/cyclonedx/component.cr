@@ -114,13 +114,11 @@ class CycloneDX::Component
       if scope_val = @scope
         xml.element("scope") { xml.text(scope_val) }
       end
-      if copyright = @copyright
-        xml.element("copyright") { xml.text(copyright) }
-      end
-      @cpe.try { |cpe| xml.element("cpe") { xml.text(cpe) } }
-      @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
-      @swid.try(&.to_xml(xml))
-
+      # Element order below follows the CycloneDX componentType XSD <sequence>:
+      # ... scope, hashes, licenses, copyright, cpe, purl, swid, pedigree,
+      # externalReferences, properties, components, evidence, releaseNotes,
+      # modelCard, data, cryptoProperties, tags. Emitting out of this order
+      # makes the document fail XSD validation.
       if hashes_val = @hashes
         xml.element("hashes") do
           hashes_val.each(&.to_xml(xml))
@@ -132,6 +130,14 @@ class CycloneDX::Component
           licenses_val.each(&.to_xml(xml))
         end
       end
+
+      if copyright = @copyright
+        xml.element("copyright") { xml.text(copyright) }
+      end
+      @cpe.try { |cpe| xml.element("cpe") { xml.text(cpe) } }
+      @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
+      @swid.try(&.to_xml(xml))
+      @pedigree.try(&.to_xml(xml))
 
       if external_refs_val = @external_references
         xml.element("externalReferences") do
@@ -145,25 +151,23 @@ class CycloneDX::Component
         end
       end
 
-      @pedigree.try(&.to_xml(xml))
-      @evidence.try(&.to_xml(xml))
-
       if sub_components = @components
         xml.element("components") do
           sub_components.each(&.to_xml(xml))
         end
       end
 
+      @evidence.try(&.to_xml(xml))
+      @release_notes.try(&.to_xml(xml))
       @model_card.try(&.to_xml(xml))
 
+      # Each ComponentData is its own `<data>` element (componentDataType,
+      # maxOccurs unbounded) — not a `<data>` wrapper around `<dataset>` items.
       if data_val = @data
-        xml.element("data") do
-          data_val.each(&.to_xml(xml))
-        end
+        data_val.each(&.to_xml(xml, "data"))
       end
 
       @crypto_properties.try(&.to_xml(xml))
-      @release_notes.try(&.to_xml(xml))
 
       if tags_val = @tags
         xml.element("tags") do
