@@ -1,0 +1,45 @@
+# typed: strict
+# frozen_string_literal: true
+
+# This file is rendered by cyclonedx-cr's release pipeline (.github/workflows/publish-homebrew-tap.yml).
+# DO NOT EDIT by hand.
+class CyclonedxCr < Formula
+  desc "CycloneDX SBOM generator for Crystal projects (shard.yml/shard.lock)"
+  homepage "https://github.com/hahwul/cyclonedx-cr"
+  version "__VERSION__"
+  license "MIT"
+
+  # cyclonedx-cr ships prebuilt binaries: Linux is statically linked (musl) and
+  # macOS links only system libraries (system libxml2) plus statically linked
+  # Crystal runtime libs and libyaml, so the formula declares no dependencies.
+  # An otool guard in release-binary.yml enforces that no Homebrew dylib leaks in.
+  on_macos do
+    on_arm do
+      url "https://github.com/hahwul/cyclonedx-cr/releases/download/v__VERSION__/cyclonedx-cr-v__VERSION__-osx-arm64"
+      sha256 "__SHA_OSX_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/hahwul/cyclonedx-cr/releases/download/v__VERSION__/cyclonedx-cr-v__VERSION__-osx-x86_64"
+      sha256 "__SHA_OSX_X86_64__"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/hahwul/cyclonedx-cr/releases/download/v__VERSION__/cyclonedx-cr-v__VERSION__-linux-arm64"
+      sha256 "__SHA_LINUX_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/hahwul/cyclonedx-cr/releases/download/v__VERSION__/cyclonedx-cr-v__VERSION__-linux-x86_64"
+      sha256 "__SHA_LINUX_X86_64__"
+    end
+  end
+
+  def install
+    bin.install Dir["cyclonedx-cr-v__VERSION__-*"].first => "cyclonedx-cr"
+  end
+
+  test do
+    system "#{bin}/cyclonedx-cr", "-h"
+  end
+end
