@@ -113,6 +113,11 @@ class CycloneDX::BOM
           "version":      BOM_VERSION.to_s,
           "serialNumber": @serial_number,
         }) do
+          # Element order below follows the CycloneDX bomType XSD <sequence>:
+          # metadata, components, services, externalReferences, dependencies,
+          # compositions, properties, vulnerabilities, annotations, formulation,
+          # declarations, definitions. Emitting out of this order fails XSD
+          # validation when the corresponding fields are populated.
           @metadata.try(&.to_xml(xml))
           xml.element("components") do
             @components.each(&.to_xml(xml))
@@ -122,19 +127,29 @@ class CycloneDX::BOM
               svcs.each(&.to_xml(xml))
             end
           end
+          if ext_refs = @external_references
+            xml.element("externalReferences") do
+              ext_refs.each(&.to_xml(xml))
+            end
+          end
           if deps = @dependencies
             xml.element("dependencies") do
               deps.each(&.to_xml(xml))
             end
           end
-          if vulns = @vulnerabilities
-            xml.element("vulnerabilities") do
-              vulns.each(&.to_xml(xml))
-            end
-          end
           if comps = @compositions
             xml.element("compositions") do
               comps.each(&.to_xml(xml))
+            end
+          end
+          if props = @properties
+            xml.element("properties") do
+              props.each(&.to_xml(xml))
+            end
+          end
+          if vulns = @vulnerabilities
+            xml.element("vulnerabilities") do
+              vulns.each(&.to_xml(xml))
             end
           end
           if annotations_val = @annotations
@@ -149,16 +164,6 @@ class CycloneDX::BOM
           end
           @declarations.try(&.to_xml(xml))
           @definitions.try(&.to_xml(xml))
-          if ext_refs = @external_references
-            xml.element("externalReferences") do
-              ext_refs.each(&.to_xml(xml))
-            end
-          end
-          if props = @properties
-            xml.element("properties") do
-              props.each(&.to_xml(xml))
-            end
-          end
         end
       end
     end

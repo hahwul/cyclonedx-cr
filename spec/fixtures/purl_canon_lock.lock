@@ -24,3 +24,12 @@ shards:
   gl_port:
     git: https://gitlab.com:8080/group/repo.git
     version: 5.0.0
+  gh_query:
+    git: https://github.com/Owner/Repo.git?ref=main
+    version: 6.0.0
+  gl_fragment:
+    git: https://gitlab.com/group/subgroup/repo#readme
+    version: 7.0.0
+  gh_trailing_query:
+    git: https://github.com/Owner/Repo.git/?x=1
+    version: 8.0.0

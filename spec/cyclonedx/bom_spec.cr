@@ -329,6 +329,21 @@ describe CycloneDX::BOM do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")
       bom.to_xml.should_not contain("<externalReferences>")
     end
+
+    it "emits root XML elements in the XSD bomType sequence order" do
+      # Per the bomType XSD <sequence>, externalReferences must precede
+      # dependencies and properties must precede vulnerabilities.
+      comp = CycloneDX::Component.new(name: "lib", version: "1.0.0")
+      ext_ref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com")
+      dep = CycloneDX::Dependency.new(ref: "lib@1.0.0")
+      prop = CycloneDX::Property.new(name: "k", value: "v")
+      bom = CycloneDX::BOM.new([comp], "1.6",
+        external_references: [ext_ref], dependencies: [dep], properties: [prop])
+
+      xml = bom.to_xml
+      xml.index!("<externalReferences>").should be < xml.index!("<dependencies>")
+      xml.index!("<dependencies>").should be < xml.index!("<properties>")
+    end
   end
 
   describe "definitions" do

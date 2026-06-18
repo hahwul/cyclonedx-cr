@@ -234,6 +234,18 @@ describe "App Integration" do
       component = JSON.parse(output)["metadata"]["component"]
       component["externalReferences"]?.should be_nil
     end
+
+    it "normalizes an scp-style git remote into a valid ssh:// URI" do
+      # `git@host:owner/repo.git` is not a valid URI and would fail CycloneDX
+      # url validation; it must be rewritten to its ssh:// equivalent.
+      output = `#{BINARY} -s #{FIXTURES}/scp_url_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+
+      refs = JSON.parse(output)["metadata"]["component"]["externalReferences"].as_a
+      vcs = refs.find!(&.["type"].as_s.== "vcs")
+      vcs["url"].as_s.should eq("ssh://git@github.com/owner/repo.git")
+      output.should_not contain("git@github.com:owner/repo.git")
+    end
   end
 
   describe "SPDX license expression" do
@@ -283,6 +295,33 @@ describe "App Integration" do
       licenses[0]["expression"]?.should be_nil
       licenses[0]["license"]["name"].should eq("Free for personal OR commercial use")
     end
+
+    it "does NOT treat a grammatically-valid string of unknown license ids as an expression" do
+      # "Foo AND Bar" parses as an SPDX expression grammatically, but neither
+      # operand is a real SPDX license, so it must fall back to a free-form name.
+      output = `#{BINARY} -s #{FIXTURES}/bogus_expr_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+      licenses = JSON.parse(output)["metadata"]["component"]["licenses"].as_a
+      licenses[0]["expression"]?.should be_nil
+      licenses[0]["license"]["name"].should eq("Foo AND Bar")
+    end
+
+    it "does NOT treat an expression with an unknown WITH exception as an expression" do
+      output = `#{BINARY} -s #{FIXTURES}/bogus_exception_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+      licenses = JSON.parse(output)["metadata"]["component"]["licenses"].as_a
+      licenses[0]["expression"]?.should be_nil
+      licenses[0]["license"]["name"].should eq("MIT WITH Bogus-Exception")
+    end
+
+    it "still treats a valid expression with a deprecated id as an SPDX expression" do
+      # Deprecated ids (GPL-2.0+) are still valid SPDX expressions, so the
+      # compound must be emitted as an expression, not a free-form name.
+      output = `#{BINARY} -s #{FIXTURES}/deprecated_expr_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_true
+      licenses = JSON.parse(output)["metadata"]["component"]["licenses"].as_a
+      licenses[0]["expression"].should eq("GPL-2.0+ OR MIT")
+    end
   end
 
   describe "PURL canonicalization and encoding" do
@@ -318,6 +357,18 @@ describe "App Integration" do
     it "does not leak an explicit port from a gitlab URL into the PURL namespace" do
       canon_purls["gl_port"].should eq("pkg:gitlab/group/repo@5.0.0")
     end
+
+    it "strips a ?query from a git URL instead of leaking it into the PURL name" do
+      canon_purls["gh_query"].should eq("pkg:github/owner/repo@6.0.0")
+    end
+
+    it "strips a #fragment from a git URL instead of leaking it into the PURL name" do
+      canon_purls["gl_fragment"].should eq("pkg:gitlab/group/subgroup/repo@7.0.0")
+    end
+
+    it "produces a canonical PURL when a git URL has a trailing slash before a query" do
+      canon_purls["gh_trailing_query"].should eq("pkg:github/owner/repo@8.0.0")
+    end
   end
 
   describe "robustness" do
@@ -342,14 +393,27 @@ describe "App Integration" do
       names.should eq(["good"])
     end
 
-    it "does not emit a self-referential dependency edge on a name@version collision" do
+    it "does not emit a duplicate bom-ref or self-edge on a name@version collision" do
       output = `#{BINARY} -s #{FIXTURES}/self_dep_shard.yml -i #{FIXTURES}/self_dep_lock.lock 2>&1`
       $?.success?.should be_true
-      deps = JSON.parse(output)["dependencies"].as_a
+      output.should contain("duplicates the root component ref")
+      bom = JSON.parse(output.lines.reject(&.starts_with?("Warning")).join("\n"))
+
+      # The colliding lock entry is dropped, so no component re-uses the root
+      # component's bom-ref (CycloneDX requires bom-refs to be unique).
+      component_refs = bom["components"].as_a.compact_map(&.["bom-ref"]?.try(&.as_s))
+      component_refs.should_not contain("dup@9.9.9")
+
+      deps = bom["dependencies"].as_a
       root = deps.find!(&.["ref"].as_s.== "dup@9.9.9")
       root["dependsOn"].as_a.should be_empty
       # the same ref must not appear as more than one top-level dependency entry
       deps.count(&.["ref"].as_s.== "dup@9.9.9").should eq(1)
+
+      # Every bom-ref in the document (root + components) is unique.
+      all_refs = component_refs.dup
+      bom["metadata"]["component"]["bom-ref"]?.try { |r| all_refs << r.as_s }
+      all_refs.size.should eq(all_refs.uniq.size)
     end
   end
 end
