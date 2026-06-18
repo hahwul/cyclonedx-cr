@@ -136,6 +136,15 @@ class CycloneDX::Component
       end
       @cpe.try { |cpe| xml.element("cpe") { xml.text(cpe) } }
       @purl.try { |purl| xml.element("purl") { xml.text(purl) } }
+      # omniborId and swhid are 1.6 repeated elements that sit between purl and
+      # swid in the componentType <sequence>. They were previously emitted in
+      # JSON but dropped from XML (a lossy divergence).
+      if omnibor_ids = @omnibor_id
+        omnibor_ids.each { |id| xml.element("omniborId") { xml.text(id) } }
+      end
+      if swhids = @swhid
+        swhids.each { |id| xml.element("swhid") { xml.text(id) } }
+      end
       @swid.try(&.to_xml(xml))
       @pedigree.try(&.to_xml(xml))
 

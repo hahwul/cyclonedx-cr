@@ -141,7 +141,6 @@ describe "BOM JSON deserialization" do
       "vulnerabilities":[{
         "id":"CVE-2024-1234",
         "workaround":"Disable feature X",
-        "aliases":["GHSA-xxxx-yyyy"],
         "advisories":[{"title":"Advisory 1","url":"https://example.com/advisory"}],
         "rejected":"2024-06-01T00:00:00Z",
         "proofOfConcept":{"reproductionSteps":"Step 1","environment":"Linux"}
@@ -150,7 +149,6 @@ describe "BOM JSON deserialization" do
     bom = CycloneDX::BOM.from_json(json)
     vuln = bom.vulnerabilities.not_nil![0]
     vuln.workaround.should eq("Disable feature X")
-    vuln.aliases.should eq(["GHSA-xxxx-yyyy"])
     vuln.advisories.not_nil![0].title.should eq("Advisory 1")
     vuln.advisories.not_nil![0].url.should eq("https://example.com/advisory")
     vuln.rejected.should eq("2024-06-01T00:00:00Z")

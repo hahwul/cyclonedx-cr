@@ -3,13 +3,15 @@ require "../../src/cyclonedx/formulation"
 
 describe CycloneDX::TaskStep do
   it "serializes to XML" do
-    step = CycloneDX::TaskStep.new(name: "compile", commands: ["crystal build src/main.cr"])
+    step = CycloneDX::TaskStep.new(name: "compile",
+      commands: [CycloneDX::StepCommand.new(executed: "crystal build src/main.cr")])
     xml_str = XML.build(indent: "  ") do |xml|
       step.to_xml(xml)
     end
     xml_str.should contain("<step>")
     xml_str.should contain("<name>compile</name>")
-    xml_str.should contain("<command>crystal build src/main.cr</command>")
+    xml_str.should contain("<command>")
+    xml_str.should contain("<executed>crystal build src/main.cr</executed>")
   end
 end
 

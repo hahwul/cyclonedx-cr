@@ -45,7 +45,9 @@ module CycloneDX
         if subjects_val = @subjects
           xml.element("subjects") do
             subjects_val.each do |ref|
-              xml.element("ref") { xml.text ref }
+              # annotationType requires <subject ref="..."/> (bomReferenceType,
+              # which carries the value in a required `ref` attribute).
+              xml.element("subject", attributes: {"ref" => ref})
             end
           end
         end

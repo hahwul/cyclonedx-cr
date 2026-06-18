@@ -3,15 +3,40 @@ require "xml"
 require "./models"
 
 module CycloneDX
+  # A single executed command within a step. Per the schema a `command` is an
+  # object (`{executed, properties}`), not a bare string.
+  class StepCommand
+    include JSON::Serializable
+
+    getter executed : String?
+    getter properties : Array(Property)?
+
+    def initialize(@executed : String? = nil, @properties : Array(Property)? = nil)
+    end
+
+    def to_xml(xml : XML::Builder)
+      xml.element("command") do
+        if executed = @executed
+          xml.element("executed") { xml.text executed }
+        end
+        if props = @properties
+          xml.element("properties") do
+            props.each(&.to_xml(xml))
+          end
+        end
+      end
+    end
+  end
+
   class TaskStep
     include JSON::Serializable
 
     getter name : String?
     getter description : String?
-    getter commands : Array(String)?
+    getter commands : Array(StepCommand)?
 
     def initialize(@name : String? = nil, @description : String? = nil,
-                   @commands : Array(String)? = nil)
+                   @commands : Array(StepCommand)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
@@ -24,9 +49,7 @@ module CycloneDX
         end
         if commands_val = @commands
           xml.element("commands") do
-            commands_val.each do |cmd|
-              xml.element("command") { xml.text cmd }
-            end
+            commands_val.each(&.to_xml(xml))
           end
         end
       end
@@ -101,10 +124,13 @@ module CycloneDX
     getter name : String?
     getter description : String?
     getter tasks : Array(Task)?
+    @[JSON::Field(key: "taskTypes")]
+    getter task_types : Array(String)?
     getter properties : Array(Property)?
 
     def initialize(@uid : String? = nil, @name : String? = nil,
                    @description : String? = nil, @tasks : Array(Task)? = nil,
+                   @task_types : Array(String)? = nil,
                    @properties : Array(Property)? = nil, @bom_ref : String? = nil)
     end
 
@@ -127,6 +153,13 @@ module CycloneDX
         if tasks_val = @tasks
           xml.element("tasks") do
             tasks_val.each(&.to_xml(xml))
+          end
+        end
+        # taskTypes is required by the workflowType schema and follows `tasks`
+        # in the <sequence>.
+        if types = @task_types
+          xml.element("taskTypes") do
+            types.each { |t| xml.element("taskType") { xml.text t } }
           end
         end
         if props = @properties

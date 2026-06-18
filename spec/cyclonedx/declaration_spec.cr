@@ -65,22 +65,21 @@ describe CycloneDX::Claim do
     xml_str.should contain(%(<claim bom-ref="claim-1">))
     xml_str.should contain("<target>comp-a@1.0.0</target>")
     xml_str.should contain("<reasoning>Security requirements documented in JIRA</reasoning>")
-    xml_str.should contain("<ref>evidence-1</ref>")
+    # claim evidence is a repeated <evidence> refLink element (not <ref>).
+    xml_str.should contain("<evidence>evidence-1</evidence>")
   end
 end
 
 describe CycloneDX::Declarations do
-  it "serializes to XML" do
-    standard = CycloneDX::Standard.new(name: "NIST SSDF", version: "1.1")
+  it "serializes to XML (standards belong under definitions, not declarations)" do
     claim = CycloneDX::Claim.new(target: "app@1.0", predicate: "Compliant")
-    decl = CycloneDX::Declarations.new(standards: [standard], claims: [claim])
+    decl = CycloneDX::Declarations.new(claims: [claim])
 
     xml_str = XML.build(indent: "  ") do |xml|
       decl.to_xml(xml)
     end
     xml_str.should contain("<declarations>")
-    xml_str.should contain("<standards>")
-    xml_str.should contain("<name>NIST SSDF</name>")
+    xml_str.should_not contain("<standards>")
     xml_str.should contain("<claims>")
     xml_str.should contain("<predicate>Compliant</predicate>")
   end

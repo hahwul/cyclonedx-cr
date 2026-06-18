@@ -53,7 +53,7 @@ describe CycloneDX::Annotation do
     end
     xml_str.should contain(%(<annotation bom-ref="ann-1">))
     xml_str.should contain("<subjects>")
-    xml_str.should contain("<ref>comp-a@1.0.0</ref>")
+    xml_str.should contain(%(<subject ref="comp-a@1.0.0"))
     xml_str.should contain("<timestamp>2024-06-01T00:00:00Z</timestamp>")
     xml_str.should contain("<text>Audit note</text>")
   end

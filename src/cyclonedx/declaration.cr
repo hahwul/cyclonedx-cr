@@ -102,6 +102,10 @@ module CycloneDX
       if bom_ref_val = @bom_ref
         attrs["bom-ref"] = bom_ref_val
       end
+      # Element order follows the claim XSD <sequence>: target, predicate,
+      # mitigationStrategies, reasoning, evidence, counterEvidence,
+      # externalReferences. `evidence`/`mitigationStrategy` are repeated
+      # refLink (text) elements, not wrappers around <ref>.
       xml.element("claim", attributes: attrs) do
         if target = @target
           xml.element("target") { xml.text target }
@@ -109,13 +113,16 @@ module CycloneDX
         if predicate = @predicate
           xml.element("predicate") { xml.text predicate }
         end
+        if strategies = @mitigation_strategies
+          xml.element("mitigationStrategies") do
+            strategies.each { |ref| xml.element("mitigationStrategy") { xml.text ref } }
+          end
+        end
         if reasoning = @reasoning
           xml.element("reasoning") { xml.text reasoning }
         end
         if evidence_val = @evidence
-          xml.element("evidence") do
-            evidence_val.each { |ref| xml.element("ref") { xml.text ref } }
-          end
+          evidence_val.each { |ref| xml.element("evidence") { xml.text ref } }
         end
       end
     end
@@ -124,19 +131,17 @@ module CycloneDX
   class Declarations
     include JSON::Serializable
 
-    getter standards : Array(Standard)?
+    # NOTE: `standards` is intentionally NOT a member of `declarations`. In the
+    # CycloneDX schema `standards` lives under `definitions` (see
+    # `CycloneDX::Definitions` / `DefinitionStandard`); declarationsType only
+    # carries assessors/attestations/claims/evidence/targets/affirmation.
     getter claims : Array(Claim)?
 
-    def initialize(@standards : Array(Standard)? = nil, @claims : Array(Claim)? = nil)
+    def initialize(@claims : Array(Claim)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
       xml.element("declarations") do
-        if standards_val = @standards
-          xml.element("standards") do
-            standards_val.each(&.to_xml(xml))
-          end
-        end
         if claims_val = @claims
           xml.element("claims") do
             claims_val.each(&.to_xml(xml))
