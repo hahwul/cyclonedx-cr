@@ -9,6 +9,7 @@ on:
       - shard.lock
       - Dockerfile
       - "**/*.cr"
+      - github-action/**
   push:
     branches: [main]
   workflow_dispatch:
@@ -34,6 +35,9 @@ jobs:
         run: shards build
       - name: Run tests
         run: crystal spec
+      - name: GitHub Action entrypoint output-injection test (issue #70)
+        if: matrix.crystal == 'latest'
+        run: ./github-action/test-entrypoint.sh
   build-docker:
     runs-on: ubuntu-latest
     strategy:

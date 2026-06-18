@@ -55,17 +55,45 @@ if [ ! -f "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
+# Emits a random hex token suitable for a unique GitHub Actions heredoc
+# delimiter. Prefers the kernel UUID source (present on Linux runners without
+# any extra package), then /dev/urandom; the final fallback is non-random but
+# the caller's collision check still guarantees a correct delimiter.
+gen_delimiter() {
+    if [ -r /proc/sys/kernel/random/uuid ]; then
+        printf 'cdx_%s' "$(tr -d '-' < /proc/sys/kernel/random/uuid)"
+    elif [ -r /dev/urandom ]; then
+        printf 'cdx_%s' "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    else
+        printf 'cdx_%s_%s' "$$" "$(date +%s 2>/dev/null || echo 0)"
+    fi
+}
+
 # Set GitHub Action outputs
 if [ -n "$GITHUB_OUTPUT" ]; then
     if [ "$OUTPUT_TO_FILE" = "true" ]; then
         echo "sbom_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
         echo "Generated SBOM file: $OUTPUT_FILE"
     else
-        # Use heredoc for multiline output to avoid delimiter issues
+        # Emit multiline SBOM content with a RANDOM heredoc delimiter. A fixed
+        # delimiter (the old `EOF`) is unsafe: GitHub ends the value at the
+        # first line that equals the delimiter, so attacker-controlled SBOM
+        # content -- e.g. a multiline dependency name that yields a bare `EOF`
+        # line in CSV output -- could terminate `sbom_content` early and inject
+        # arbitrary additional step outputs. The delimiter is re-rolled until it
+        # does not appear as a whole line in the content. See issue #70.
+        delimiter=$(gen_delimiter)
+        while grep -qxF -- "$delimiter" "$OUTPUT_FILE"; do
+            delimiter=$(gen_delimiter)
+        done
         {
-            echo "sbom_content<<EOF"
+            printf 'sbom_content<<%s\n' "$delimiter"
             cat "$OUTPUT_FILE"
-            echo "EOF"
+            # Guarantee the closing delimiter lands on its own line even when the
+            # content has no trailing newline (e.g. JSON output), otherwise the
+            # delimiter would be glued to the last content line and never match.
+            [ -n "$(tail -c1 "$OUTPUT_FILE")" ] && printf '\n'
+            printf '%s\n' "$delimiter"
         } >> "$GITHUB_OUTPUT"
         echo "Generated SBOM content (captured to output)"
     fi
