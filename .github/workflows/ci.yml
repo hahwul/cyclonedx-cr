@@ -29,6 +29,8 @@ jobs:
           crystal: ${{ matrix.crystal }}
       - name: Install dependencies
         run: shards install
+      - name: Install xmllint (for XSD schema-validation specs)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
       - name: Check formatting
         run: crystal tool format --check
       - name: Build

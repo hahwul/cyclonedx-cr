@@ -274,4 +274,23 @@ describe CycloneDX::VersionGate do
       validator.errors.any?(&.path.includes?("acknowledgement")).should be_true
     end
   end
+
+  describe "(e) service-level tags gating (1.6+)" do
+    svc_bom = ->(version : String) do
+      svc = CycloneDX::Service.new(name: "svc", bom_ref: "svc-1", tags: ["a", "b"])
+      CycloneDX::BOM.new([] of CycloneDX::Component, version, services: [svc])
+    end
+
+    it "strips service tags below 1.6 (JSON and XML)" do
+      %w[1.4 1.5].each do |v|
+        svc_bom.call(v).to_json.should_not contain(%("tags"))
+        svc_bom.call(v).to_xml.should_not contain("<tags>")
+      end
+    end
+
+    it "keeps service tags at 1.6 (JSON and XML)" do
+      svc_bom.call("1.6").to_json.should contain(%("tags"))
+      svc_bom.call("1.6").to_xml.should contain("<tags>")
+    end
+  end
 end

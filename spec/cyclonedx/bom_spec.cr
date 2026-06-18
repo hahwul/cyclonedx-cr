@@ -279,13 +279,13 @@ describe CycloneDX::BOM do
 
   describe "declarations" do
     it "includes declarations in JSON output" do
-      standard = CycloneDX::Standard.new(name: "NIST SSDF", version: "1.1")
-      decl = CycloneDX::Declarations.new(standards: [standard])
+      claim = CycloneDX::Claim.new(target: "app@1.0", predicate: "Compliant")
+      decl = CycloneDX::Declarations.new(claims: [claim])
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", declarations: decl)
 
       json = bom.to_json
       json.should contain(%("declarations"))
-      json.should contain(%("NIST SSDF"))
+      json.should contain(%("Compliant"))
     end
 
     it "includes declarations in XML output" do

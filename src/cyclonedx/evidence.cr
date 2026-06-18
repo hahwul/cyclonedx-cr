@@ -43,11 +43,9 @@ module CycloneDX
     getter field : String?
     getter confidence : Float64?
     getter methods : Array(EvidenceMethod)?
-    getter occurrences : Array(EvidenceOccurrence)?
 
     def initialize(@field : String? = nil, @confidence : Float64? = nil,
-                   @methods : Array(EvidenceMethod)? = nil,
-                   @occurrences : Array(EvidenceOccurrence)? = nil)
+                   @methods : Array(EvidenceMethod)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
@@ -63,11 +61,6 @@ module CycloneDX
             methods_val.each(&.to_xml(xml))
           end
         end
-        if occurrences_val = @occurrences
-          xml.element("occurrences") do
-            occurrences_val.each(&.to_xml(xml))
-          end
-        end
       end
     end
   end
@@ -80,10 +73,11 @@ module CycloneDX
     def initialize(@text : String)
     end
 
+    # A copyright entry is a single `<text>` element; the parent `Evidence`
+    # wraps the collection in one `<copyright>` element (copyrightsType allows a
+    # single <copyright> containing multiple <text> children).
     def to_xml(xml : XML::Builder)
-      xml.element("copyright") do
-        xml.element("text") { xml.text @text }
-      end
+      xml.element("text") { xml.text @text }
     end
   end
 
@@ -91,10 +85,15 @@ module CycloneDX
     include JSON::Serializable
 
     getter identity : Array(EvidenceIdentity)?
+    # `occurrences` is a componentEvidence-level field, NOT a child of
+    # `identity` (XSD componentEvidenceType: identity, occurrences, callstack,
+    # licenses, copyright).
+    getter occurrences : Array(EvidenceOccurrence)?
     getter licenses : Array(License | LicenseExpression)?
     getter copyright : Array(EvidenceCopyright)?
 
     def initialize(@identity : Array(EvidenceIdentity)? = nil,
+                   @occurrences : Array(EvidenceOccurrence)? = nil,
                    @licenses : Array(License | LicenseExpression)? = nil,
                    @copyright : Array(EvidenceCopyright)? = nil)
     end
@@ -104,13 +103,20 @@ module CycloneDX
         if identity_val = @identity
           identity_val.each(&.to_xml(xml))
         end
+        if occurrences_val = @occurrences
+          xml.element("occurrences") do
+            occurrences_val.each(&.to_xml(xml))
+          end
+        end
         if licenses_val = @licenses
           xml.element("licenses") do
             licenses_val.each(&.to_xml(xml))
           end
         end
         if copyright_val = @copyright
-          copyright_val.each(&.to_xml(xml))
+          xml.element("copyright") do
+            copyright_val.each(&.to_xml(xml))
+          end
         end
       end
     end

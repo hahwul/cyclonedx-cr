@@ -13,7 +13,10 @@ module CycloneDX
     def initialize(@content : String, @content_type : String? = nil, @encoding : String? = nil)
     end
 
-    def to_xml(xml : XML::Builder)
+    # `element_name` differs by context: the value is a `<text>` element in most
+    # places, but an `<attachment>` element inside a vulnerability's
+    # proofOfConcept supportingMaterial (both share attachmentType's shape).
+    def to_xml(xml : XML::Builder, element_name : String = "text")
       attrs = {} of String => String
       if ct = @content_type
         attrs["content-type"] = ct
@@ -21,7 +24,7 @@ module CycloneDX
       if enc = @encoding
         attrs["encoding"] = enc
       end
-      xml.element("text", attributes: attrs) do
+      xml.element(element_name, attributes: attrs) do
         xml.text @content
       end
     end

@@ -90,6 +90,10 @@ module CycloneDX
         # 1.6+
         "acknowledgement" => "1.6",
       },
+      service: {
+        # 1.6+ (service-level `tags` was introduced in 1.6)
+        "tags" => "1.6",
+      },
     }
 
     # ---- JSON filtering --------------------------------------------------
@@ -128,6 +132,8 @@ module CycloneDX
         case {context, key}
         when {:bom, "metadata"}           then :metadata
         when {:bom, "components"}         then :component
+        when {:bom, "services"}           then :service
+        when {:service, "services"}       then :service
         when {:metadata, "component"}     then :component
         when {:component, "components"}   then :component
         when {:component, "licenses"}     then :licenses_array
@@ -237,6 +243,8 @@ module CycloneDX
           GATED[:bom][name]?
         when {"metadata", "lifecycles"}, {"metadata", "manufacturer"}
           GATED[:metadata][name]?
+        when {"service", "tags"}
+          GATED[:service][name]?
         end
 
       return false unless min

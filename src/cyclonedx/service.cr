@@ -105,20 +105,22 @@ module CycloneDX
             external_refs_val.each(&.to_xml(xml))
           end
         end
+        # Order below follows the CycloneDX serviceType XSD <sequence>:
+        # ...externalReferences, properties, services, releaseNotes, tags.
+        if props = @properties
+          xml.element("properties") do
+            props.each(&.to_xml(xml))
+          end
+        end
         if sub_services = @services
           xml.element("services") do
             sub_services.each(&.to_xml(xml))
           end
         end
+        @release_notes.try(&.to_xml(xml))
         if tags_val = @tags
           xml.element("tags") do
             tags_val.each { |tag| xml.element("tag") { xml.text(tag) } }
-          end
-        end
-        @release_notes.try(&.to_xml(xml))
-        if props = @properties
-          xml.element("properties") do
-            props.each(&.to_xml(xml))
           end
         end
       end
