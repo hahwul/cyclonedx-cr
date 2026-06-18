@@ -226,6 +226,14 @@ module CycloneDX
           end
         end
       end
+
+      # The root component lives in `metadata.component` and is subject to the
+      # same structural rules (name/version/type/scope/hashes/externalReferences)
+      # as the entries of `bom.components`; validate it the same way so an
+      # invalid root is not silently accepted while the schema rejects it.
+      if comp = metadata.component
+        validate_component(comp, "#{path}.component")
+      end
     end
 
     private def add_error(path : String, message : String)

@@ -1,0 +1,4 @@
+name: scp-url
+version: 0.1.0
+homepage: https://example.com
+repository: git@github.com:owner/repo.git

@@ -112,14 +112,14 @@ describe CycloneDX::VersionGate do
       xml.should contain("<author>single-author-string</author>")
     end
 
-    it "still strips the same 1.6 fields under 1.5 (but keeps 1.5 modelCard)" do
+    it "strips 1.6-only fields under 1.5 but keeps 1.5 fields (modelCard, license bom-ref)" do
       comp = CycloneDX::Component.new(
         name: "lib", version: "1.0.0",
         tags: ["a"],
         authors: [CycloneDX::OrganizationalContact.new(name: "Jane")],
         crypto_properties: CycloneDX::CryptoProperties.new(asset_type: "algorithm"),
         model_card: CycloneDX::ModelCard.new(bom_ref: "mc-1"),
-        licenses: [CycloneDX::License.new(id: "MIT", bom_ref: "lic-1")] of CycloneDX::License | CycloneDX::LicenseExpression
+        licenses: [CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "declared")] of CycloneDX::License | CycloneDX::LicenseExpression
       )
       bom = CycloneDX::BOM.new([comp], "1.5")
 
@@ -127,7 +127,10 @@ describe CycloneDX::VersionGate do
       json.should_not contain(%("tags"))
       json.should_not contain(%("cryptoProperties"))
       json.should_not contain(%("authors"))
-      json.should_not contain(%("bom-ref":"lic-1"))
+      # license bom-ref is a 1.5 field, so it is kept at 1.5 ...
+      json.should contain(%("bom-ref":"lic-1"))
+      # ... but acknowledgement is 1.6-only, so it is stripped at 1.5
+      json.should_not contain(%("acknowledgement"))
       # modelCard is 1.5+, so it stays at 1.5
       json.should contain(%("modelCard"))
     end

@@ -74,6 +74,26 @@ describe CycloneDX::Validator do
       validator.errors.any?(&.path.includes?("components[0]")).should be_true
     end
 
+    it "validates the root component in metadata.component" do
+      # The root component lives in metadata.component; an invalid type there
+      # is schema-invalid and must be flagged just like a bom.components entry.
+      root = CycloneDX::Component.new(name: "root", version: "1.0", component_type: "not-a-type")
+      metadata = CycloneDX::Metadata.new(component: root)
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: metadata)
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any? { |e| e.path == "$.metadata.component.type" }.should be_true
+    end
+
+    it "passes a valid root component in metadata.component" do
+      root = CycloneDX::Component.new(name: "root", version: "1.0", component_type: "application")
+      metadata = CycloneDX::Metadata.new(component: root)
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: metadata)
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+      validator.errors.should be_empty
+    end
+
     it "reports multiple errors" do
       comp = CycloneDX::Component.new(name: "", version: "", component_type: "bad")
       bom = CycloneDX::BOM.new([comp], "1.6")

@@ -75,17 +75,19 @@ module CycloneDX
         "authors" => "1.6",
       },
       license: {
+        # 1.5+ (license `bom-ref` was introduced in 1.5)
+        "bom-ref" => "1.5",
         # 1.6+
-        "bom-ref"         => "1.6",
         "acknowledgement" => "1.6",
       },
       # A `LicenseExpression` sits directly in a licenses array (no `license`
-      # wrapper key), so its 1.6+ `bom-ref`/`acknowledgement` keys are gated at
-      # the array-entry level. The `{ "license": {...} }` wrapper carries only
-      # the `license` key here, so it is unaffected.
+      # wrapper key), so its `bom-ref`/`acknowledgement` keys are gated at the
+      # array-entry level. The `{ "license": {...} }` wrapper carries only the
+      # `license` key here, so it is unaffected.
       licenses_array: {
+        # 1.5+
+        "bom-ref" => "1.5",
         # 1.6+
-        "bom-ref"         => "1.6",
         "acknowledgement" => "1.6",
       },
     }
@@ -165,8 +167,9 @@ module CycloneDX
     # is a `component`). License-level gating is on attributes, not elements,
     # and is handled via `XML_LICENSE_ATTRS`.
 
-    # License-level attributes that are 1.6+ only.
-    XML_LICENSE_ATTRS = {"bom-ref" => "1.6", "acknowledgement" => "1.6"}
+    # License-level attributes and the minimum spec version each was added in:
+    # `bom-ref` is 1.5+, `acknowledgement` is 1.6+.
+    XML_LICENSE_ATTRS = {"bom-ref" => "1.5", "acknowledgement" => "1.6"}
 
     # Returns a copy of `xml` with elements/attributes newer than
     # `spec_version` removed.
@@ -311,7 +314,7 @@ module CycloneDX
 
       licenses.each_with_index do |lic, i|
         lp = "#{path}.licenses[#{i}]"
-        result << Violation.new(lp, "bom-ref", "1.6") if !lic.bom_ref.nil? && newer?("1.6", sv)
+        result << Violation.new(lp, "bom-ref", "1.5") if !lic.bom_ref.nil? && newer?("1.5", sv)
         result << Violation.new(lp, "acknowledgement", "1.6") if !lic.acknowledgement.nil? && newer?("1.6", sv)
       end
     end

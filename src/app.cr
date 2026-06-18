@@ -150,6 +150,7 @@ class App
     main_component = parse_main_component(shard)
     dev_dep_names = shard.dev_dependency_names
     dependencies = parse_dependencies(options.shard_lock_file, dev_dep_names)
+    dependencies = drop_root_collisions(dependencies, main_component.bom_ref)
 
     tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
     timestamp = Time.utc.to_rfc3339
@@ -222,6 +223,14 @@ class App
   # Simple URL validation pattern (http/https/git schemes)
   private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|git@.+)\z/
 
+  # scp-style git remote: `user@host:path` (no scheme). This is NOT a valid URI
+  # so it cannot be emitted verbatim as a CycloneDX externalReference `url`
+  # (the XSD validates it as `xs:anyURI`). The capture groups are the user, host
+  # and path. The `(?!\/)` lookahead skips a `:/...` shape so an already-URI-ish
+  # value is left untouched. Only `git@`-form URLs (per `URL_PATTERN`) ever reach
+  # this; `ssh://...` remotes are not emitted as external references at all.
+  private SCP_GIT_PATTERN = /\A([\w.\-]+)@([\w.\-]+):(?!\/)(.+)\z/
+
   # SPDX license expression operators
   private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
 
@@ -235,7 +244,7 @@ class App
   # - Single identifiers that exist in the SPDX catalog use the canonical `id`.
   # - Everything else falls back to the free-form `name`.
   private def build_licenses(license : String) : Array(CycloneDX::License | CycloneDX::LicenseExpression)
-    if license =~ SPDX_EXPRESSION_PATTERN && Spdx.valid_expression?(license)
+    if license =~ SPDX_EXPRESSION_PATTERN && valid_spdx_expression?(license)
       [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
     elsif Spdx.license?(license)
       canonical = Spdx.find_license(license).id
@@ -243,6 +252,23 @@ class App
     else
       [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
     end
+  end
+
+  # True when `license` is a SPDX license expression that is both grammatically
+  # valid AND built entirely from real SPDX license/exception identifiers.
+  #
+  # `Spdx.valid_expression?` only checks the grammar, so a well-shaped string of
+  # bogus identifiers ("Foo AND Bar", "MIT WITH Bogus-Exception") passes it. The
+  # CycloneDX `expression` field is defined as "a valid SPDX license
+  # expression", so such strings must fall through to the free-form `name`
+  # branch instead of being emitted as an expression. Deprecated ids and
+  # non-canonical casing are still valid expressions (they emit a non-"Unknown"
+  # warning), so they are intentionally accepted.
+  private def valid_spdx_expression?(license : String) : Bool
+    return false unless Spdx.valid_expression?(license)
+    Spdx.validate_expression(license).warnings.none?(&.starts_with?("Unknown"))
+  rescue Spdx::ParseError
+    false
   end
 
   # Parses the main component information from a parsed ShardFile.
@@ -253,8 +279,8 @@ class App
     end
 
     external_refs = [
-      shard.homepage.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_WEBSITE, url: url) if url =~ URL_PATTERN },
-      shard.repository.try { |url| CycloneDX::ExternalReference.new(ref_type: REF_TYPE_VCS, url: url) if url =~ URL_PATTERN },
+      build_external_reference(REF_TYPE_WEBSITE, shard.homepage),
+      build_external_reference(REF_TYPE_VCS, shard.repository),
     ].compact
     external_refs = nil if external_refs.empty?
 
@@ -270,6 +296,25 @@ class App
       external_references: external_refs,
       bom_ref: generate_bom_ref(shard.name, shard.version)
     )
+  end
+
+  # Builds an external reference for a shard.yml URL field, or nil when the URL
+  # is missing or not a recognised http/https/git form. The URL is normalised so
+  # the emitted `url` is always a valid URI (see `normalize_url`).
+  private def build_external_reference(ref_type : String, url : String?) : CycloneDX::ExternalReference?
+    return unless url && url =~ URL_PATTERN
+    CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalize_url(url))
+  end
+
+  # Rewrites an scp-style git remote (`git@host:owner/repo.git`) to its
+  # equivalent `ssh://git@host/owner/repo.git` URI so the value is a valid
+  # CycloneDX externalReference `url`. All other URLs are returned unchanged.
+  private def normalize_url(url : String) : String
+    if m = url.match(SCP_GIT_PATTERN)
+      "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
+    else
+      url
+    end
   end
 
   # Parses dependency components from `shard.lock`.
@@ -294,6 +339,23 @@ class App
         scope: scope
       )
     end
+  end
+
+  # Drops any locked dependency whose bom-ref equals the root component's
+  # bom-ref. The root component lives in `metadata.component`; emitting a second
+  # component in the `components` array under the same bom-ref produces a
+  # duplicate identifier, which violates the CycloneDX bom-ref uniqueness
+  # constraint (the XSD enforces it) and is semantically a self-reference. This
+  # happens when a `shard.lock` re-lists the project itself, or when a
+  # dependency coincidentally shares the project's exact name@version.
+  private def drop_root_collisions(dependencies : Array(CycloneDX::Component),
+                                   main_ref : String?) : Array(CycloneDX::Component)
+    return dependencies unless main_ref
+    kept = dependencies.reject(&.bom_ref.== main_ref)
+    if kept.size < dependencies.size
+      STDERR.puts "Warning: skipping lock entry that duplicates the root component ref '#{main_ref}'."
+    end
+    kept
   end
 
   # Builds the dependency graph for the BOM.
@@ -342,6 +404,7 @@ class App
   # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab,
   # Bitbucket). Returns nil for unrecognised hosts.
   private def parse_purl_from_git_url(git_url : String, version : String) : String?
+    git_url = strip_url_query_fragment(git_url)
     if git_url =~ GITHUB_REPO_PATTERN
       build_purl(PURL_GITHUB_PREFIX, $1, version, lowercase: true)
     elsif git_url =~ GITLAB_REPO_PATTERN
@@ -349,6 +412,15 @@ class App
     elsif git_url =~ BITBUCKET_REPO_PATTERN
       build_purl(PURL_BITBUCKET_PREFIX, $1, version, lowercase: true)
     end
+  end
+
+  # Strips any `?query` or `#fragment` from a git URL before host/path
+  # extraction. Without this, a URL like `https://github.com/o/r.git?ref=main`
+  # leaks `?ref=main` into the PURL name (`r.git%3Fref%3Dmain`), leaves the
+  # `.git` suffix unstripped, and a `.git/?x=1` form fails to match at all. The
+  # earliest of `?` or `#` (and everything after it) is removed.
+  private def strip_url_query_fragment(url : String) : String
+    url.partition('?')[0].partition('#')[0]
   end
 
   # Assembles a canonical PURL from a repo path ("owner/repo", or for GitLab a
