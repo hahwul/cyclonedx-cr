@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source (formula template)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
 
@@ -80,7 +80,7 @@ jobs:
           cat out/cyclonedx-cr.rb
 
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: hahwul/homebrew-cyclonedx-cr
           token: ${{ secrets.PUBLISH_TOKEN }}
