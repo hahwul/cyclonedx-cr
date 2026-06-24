@@ -21,7 +21,7 @@ RUN shards build --release --no-debug --production && \
 
 ##= RUNNER =##
 # Match builder's ABI (Ubuntu 24.04) to avoid ICU/glibc mismatches
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 # Install runtime libraries required by the linked binary
 RUN apt-get update && apt-get install -y --no-install-recommends \
