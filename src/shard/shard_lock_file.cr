@@ -14,9 +14,14 @@ end
 class ShardLockEntry
   include YAML::Serializable
 
+  # Placeholder used when a lock entry carries no version of its own. It is a
+  # marker for "not known", not a real version, so consumers must not present
+  # it as one (see `App#build_purl`, which omits it from the PURL).
+  UNKNOWN_VERSION = "unknown"
+
   # The version of the locked dependency. Optional because `path:` entries
-  # (and some other lock formats) may omit it; defaults to "unknown".
-  getter version : String = "unknown"
+  # (and some other lock formats) may omit it; defaults to `UNKNOWN_VERSION`.
+  getter version : String = UNKNOWN_VERSION
   # The Git URL if the dependency is sourced from a Git repository.
   getter git : String?
   # The GitHub repository path (e.g., "owner/repo") if sourced from GitHub.

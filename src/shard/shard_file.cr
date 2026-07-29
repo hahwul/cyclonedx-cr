@@ -24,13 +24,23 @@ class ShardFile
   @[YAML::Field(key: "development_dependencies")]
   getter development_dependencies : YAML::Any?
 
+  # Returns the set of dependency names declared as runtime dependencies.
+  def runtime_dependency_names : Set(String)
+    dependency_names(@dependencies)
+  end
+
   # Returns the set of dependency names declared as development dependencies.
   def dev_dependency_names : Set(String)
+    dependency_names(@development_dependencies)
+  end
+
+  # Collects the keys of a `name -> source details` dependency mapping. A
+  # non-mapping node (or a non-string key) is not a dependency declaration, so
+  # it contributes nothing rather than raising.
+  private def dependency_names(node : YAML::Any?) : Set(String)
     names = Set(String).new
-    if dev_deps = @development_dependencies
-      if mapping = dev_deps.as_h?
-        mapping.each_key { |key| key.as_s?.try { |s| names << s } }
-      end
+    if mapping = node.try(&.as_h?)
+      mapping.each_key { |key| key.as_s?.try { |s| names << s } }
     end
     names
   end

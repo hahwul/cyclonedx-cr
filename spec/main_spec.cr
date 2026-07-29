@@ -1,5 +1,10 @@
 require "spec"
-require "../src/main"
+# `src/main.cr` is the executable entrypoint: it calls `App.new.run` at the top
+# level. Requiring it from a spec runs the whole CLI as a load-time side effect,
+# which prints an SBOM into the spec output and — when `shard.lock` is absent —
+# calls `exit(1)`, aborting the entire suite before any example runs. These
+# examples only need the `App` class, so require that directly.
+require "../src/app"
 
 describe App do
   it "runs without errors" do

@@ -5,6 +5,7 @@ require "./cyclonedx/bom"
 require "./cyclonedx/component"
 require "./cyclonedx/models"
 require "./cyclonedx/metadata"
+require "./cyclonedx/validator"
 require "./shard/shard_file"
 require "./shard/shard_lock_file"
 
@@ -29,18 +30,20 @@ class App
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
 
-  # Regex patterns for extracting owner/repo from Git URLs.
-  #
-  # The host may be followed by an explicit `:<port>/` (e.g. an
-  # `ssh://git@github.com:22/owner/repo` remote); that port must be consumed,
-  # not captured as part of the namespace. `(?::\d+\/|[\/:])` matches either a
-  # `:port/` or the ordinary `/` (scheme URL) / `:` (scp-form) separator.
-  # A trailing `.git` suffix and any trailing slashes are tolerated. GitHub and
-  # Bitbucket repos are exactly `owner/repo`; GitLab additionally supports
-  # subgroups (`group/subgroup/.../repo`), so its pattern captures the full path.
-  private GITHUB_REPO_PATTERN    = /github\.com(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
-  private GITLAB_REPO_PATTERN    = /gitlab\.com(?::\d+\/|[\/:])([^\/].*?)(?:\.git)?\/*$/
-  private BITBUCKET_REPO_PATTERN = /bitbucket\.org(?::\d+\/|[\/:])([^\/]+\/[^\/]+?)(?:\.git)?\/*$/
+  # Known forge hosts, matched against the parsed host of a git remote (see
+  # `split_git_remote`). Matching the *host* rather than searching the whole URL
+  # matters: a substring search treats `notgithub.com/o/r` and a mirror path
+  # like `mirror.internal/github.com/o/r` as GitHub, which would attribute the
+  # component to an upstream project it does not actually come from.
+  # Hosts are compared lowercased because they are case-insensitive (RFC 3986).
+  private GITHUB_HOST    = "github.com"
+  private GITLAB_HOST    = "gitlab.com"
+  private BITBUCKET_HOST = "bitbucket.org"
+
+  # GitHub and Bitbucket repos are exactly `owner/repo`; GitLab additionally
+  # supports subgroups (`group/subgroup/.../repo`), so it accepts 2 or more
+  # path segments.
+  private OWNER_REPO_SEGMENTS = 2
 
   # Holds parsed command-line options.
   record Options,
@@ -57,7 +60,26 @@ class App
     exit(1) unless validate_input_files(options)
 
     bom = generate_bom(options)
+    exit(1) unless validate_bom(bom)
     write_output(bom, options)
+  end
+
+  # Runs the library validator over the assembled BOM before it is written.
+  #
+  # `generate_bom` can only produce a structurally-invalid BOM from malformed
+  # input — most notably a `shard.yml` whose `name` is present but empty, which
+  # yields a component with an empty `name`. Blank names are already rejected
+  # for `shard.lock` entries; this closes the same gap for the root component
+  # and gives the whole BOM tree a schema safety net. Emitting an invalid SBOM
+  # that a downstream consumer rejects later is worse than failing here, so this
+  # is a hard error rather than a warning.
+  private def validate_bom(bom : CycloneDX::BOM) : Bool
+    validator = CycloneDX::Validator.new
+    return true if validator.validate(bom)
+
+    STDERR.puts "Error: the generated SBOM is not valid CycloneDX:"
+    validator.errors.each { |error| STDERR.puts "  - #{error}" }
+    false
   end
 
   # Parses command-line options and returns an Options record.
@@ -148,7 +170,12 @@ class App
   private def generate_bom(options : Options) : CycloneDX::BOM
     shard = read_yaml_file(options.shard_file, ShardFile)
     main_component = parse_main_component(shard)
-    dev_dep_names = shard.dev_dependency_names
+    # A shard may be declared in BOTH `dependencies` and
+    # `development_dependencies`. It is still required at runtime, so runtime
+    # membership wins: marking such a component `optional` understates its
+    # scope and pushes a genuinely runtime-reachable component down in
+    # downstream vulnerability triage.
+    dev_dep_names = shard.dev_dependency_names - shard.runtime_dependency_names
     dependencies = parse_dependencies(options.shard_lock_file, dev_dep_names)
     dependencies = drop_root_collisions(dependencies, main_component.bom_ref)
 
@@ -393,25 +420,84 @@ class App
   # Supports GitHub, GitLab and (via Git URL) Bitbucket repositories.
   private def generate_purl(details : ShardLockEntry) : String?
     if github_repo = details.github
-      build_purl(PURL_GITHUB_PREFIX, github_repo, details.version, lowercase: true)
+      repo = shorthand_repo_path(github_repo, OWNER_REPO_SEGMENTS, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_GITHUB_PREFIX, repo, details.version, lowercase: true) if repo
     elsif gitlab_repo = details.gitlab
-      build_purl(PURL_GITLAB_PREFIX, gitlab_repo, details.version, lowercase: false)
+      repo = shorthand_repo_path(gitlab_repo, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_GITLAB_PREFIX, repo, details.version, lowercase: false) if repo
     elsif git_url = details.git
       parse_purl_from_git_url(git_url, details.version)
     end
   end
 
+  # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only
+  # ever accepts a plain `namespace/name` here, so a value carrying a scheme, a
+  # host or stray slashes is malformed and previously got folded verbatim into
+  # the PURL (`github: https://github.com/o/r` produced
+  # `pkg:github/https%3A//github.com/o/r@1.0`). A malformed PURL is worse than
+  # an absent one, so such entries get no PURL and a warning instead.
+  private def shorthand_repo_path(value : String, min_segments : Int32,
+                                  max_segments : Int32 = Int32::MAX) : String?
+    path = clean_repo_path(value, min_segments, max_segments)
+    STDERR.puts "Warning: skipping PURL for malformed repository shorthand '#{value}'." unless path
+    path
+  end
+
   # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab,
-  # Bitbucket). Returns nil for unrecognised hosts.
+  # Bitbucket). Returns nil for unrecognised hosts or unrecognised URL shapes.
   private def parse_purl_from_git_url(git_url : String, version : String) : String?
-    git_url = strip_url_query_fragment(git_url)
-    if git_url =~ GITHUB_REPO_PATTERN
-      build_purl(PURL_GITHUB_PREFIX, $1, version, lowercase: true)
-    elsif git_url =~ GITLAB_REPO_PATTERN
-      build_purl(PURL_GITLAB_PREFIX, $1, version, lowercase: false)
-    elsif git_url =~ BITBUCKET_REPO_PATTERN
-      build_purl(PURL_BITBUCKET_PREFIX, $1, version, lowercase: true)
+    host, path = split_git_remote(strip_url_query_fragment(git_url)) || return
+
+    case host
+    when GITHUB_HOST
+      repo = clean_repo_path(path, OWNER_REPO_SEGMENTS, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_GITHUB_PREFIX, repo, version, lowercase: true) if repo
+    when GITLAB_HOST
+      repo = clean_repo_path(path, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_GITLAB_PREFIX, repo, version, lowercase: false) if repo
+    when BITBUCKET_HOST
+      repo = clean_repo_path(path, OWNER_REPO_SEGMENTS, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_BITBUCKET_PREFIX, repo, version, lowercase: true) if repo
     end
+  end
+
+  # Splits a git remote into its `{host, path}`, or nil when the remote is not a
+  # shape we recognise. Two forms are accepted:
+  #
+  #   * a scheme URI  — `https://host[:port]/path`, `ssh://git@host/path`, `git://host/path`
+  #   * an scp remote — `git@host:path`
+  #
+  # The host is lowercased (hosts are case-insensitive), and any userinfo/port is
+  # discarded by the parse rather than being matched as part of the host, so
+  # `https://github.com@evil.example/o/r` correctly resolves to `evil.example`.
+  private def split_git_remote(url : String) : {String, String}?
+    if m = url.match(SCP_GIT_PATTERN)
+      return {m[2].downcase, m[3]}
+    end
+
+    uri = URI.parse(url)
+    host = uri.host
+    return if host.nil? || host.empty?
+    {host.downcase, uri.path}
+  rescue URI::Error
+    nil
+  end
+
+  # Normalises a repository path ("namespace/name", or for GitLab a longer
+  # "group/subgroup/name"): drops surrounding slashes and a trailing `.git`,
+  # then returns it only when every slash-delimited segment is non-empty and the
+  # segment count falls within `min_segments..max_segments`. Anything else is
+  # malformed and yields nil so no PURL is emitted.
+  private def clean_repo_path(path : String, min_segments : Int32,
+                              max_segments : Int32 = Int32::MAX) : String?
+    path = path.strip('/')
+    path = path.rchop(".git").strip('/') if path.ends_with?(".git")
+    return if path.empty?
+
+    segments = path.split('/')
+    return unless min_segments <= segments.size <= max_segments
+    return if segments.any?(&.empty?)
+    path
   end
 
   # Strips any `?query` or `#fragment` from a git URL before host/path
@@ -431,9 +517,16 @@ class App
   # The github and bitbucket types define the namespace/name as case-insensitive
   # and require it lowercased; gitlab paths are case-sensitive and left as-is.
   # The version is always percent-encoded but never case-folded.
+  #
+  # A lock entry with no version of its own (e.g. a `path:` dependency) carries
+  # the `ShardLockEntry::UNKNOWN_VERSION` placeholder. Emitting that as
+  # `@unknown` asserts a version that does not exist; the package-url encoding
+  # for "version not known" is to omit the `@version` component entirely.
   private def build_purl(prefix : String, repo_path : String, version : String, lowercase : Bool) : String
     repo_path = repo_path.downcase if lowercase
-    "#{prefix}#{encode_purl_path(repo_path)}@#{encode_purl_segment(version)}"
+    purl = "#{prefix}#{encode_purl_path(repo_path)}"
+    return purl if version.empty? || version == ShardLockEntry::UNKNOWN_VERSION
+    "#{purl}@#{encode_purl_segment(version)}"
   end
 
   # Percent-encodes a single PURL component. `URI.encode_path_segment` leaves

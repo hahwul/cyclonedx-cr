@@ -1,0 +1,10 @@
+name: dual-scope
+version: 0.1.0
+dependencies:
+  shared_dep:
+    github: owner/shared_dep
+development_dependencies:
+  shared_dep:
+    github: owner/shared_dep
+  dev_only:
+    github: owner/dev_only

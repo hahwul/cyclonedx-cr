@@ -1,0 +1,8 @@
+version: 2.0
+shards:
+  shared_dep:
+    github: owner/shared_dep
+    version: 1.0.0
+  dev_only:
+    github: owner/dev_only
+    version: 2.0.0

@@ -1,0 +1,17 @@
+version: 2.0
+shards:
+  lookalike_host:
+    git: https://notgithub.com/Owner/Repo.git
+    version: 1.0.0
+  mirror_path:
+    git: https://mirror.internal/github.com/Owner/Repo.git
+    version: 1.0.0
+  userinfo_host:
+    git: https://github.com@evil.example/Owner/Repo.git
+    version: 1.0.0
+  uppercase_host:
+    git: https://GITHUB.COM/Owner/Repo.git
+    version: 1.0.0
+  scp_uppercase:
+    git: git@GitHub.com:Owner/Repo.git
+    version: 1.0.0
