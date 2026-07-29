@@ -49,7 +49,7 @@ jobs:
         run: |
           mkdir -p build
           docker run --rm -v "$(pwd)":/cyclonedx-cr -w /cyclonedx-cr --entrypoint="" \
-            crystallang/crystal:1.20.0-alpine sh -c "
+            crystallang/crystal:1.21.0-alpine sh -c "
               apk add --no-cache yaml-dev yaml-static libxml2-dev libxml2-static xz-dev xz-static zlib-dev zlib-static git curl &&
               shards install --release --no-debug --production &&
               mkdir -p build &&

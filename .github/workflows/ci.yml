@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crystal: [latest, "1.19.0", "1.20.0"]
+        crystal: [latest, "1.21.0"]
     steps:
       - uses: actions/checkout@v6
       - name: Install Crystal

@@ -15,7 +15,7 @@ targets:
   cyclonedx-cr:
     main: src/main.cr
 
-crystal: ">= 1.6.2"
+crystal: ">= 1.21.0"
 
 license: MIT
 
