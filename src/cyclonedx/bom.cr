@@ -169,20 +169,44 @@ class CycloneDX::BOM
     end
   end
 
+  # Characters that make a spreadsheet treat a cell as a formula rather than as
+  # text. Excel, LibreOffice and Google Sheets all evaluate such cells on open.
+  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@'}
+
   # Serializes the BOM to CSV format.
   #
   # The root component lives in `metadata.component` (not in `components`), so it
   # is emitted as the first row to keep the CSV consistent with the JSON/XML
   # output, which both represent the root component.
+  #
+  # `Scope` and `BOM-Ref` are appended after the original four columns so a
+  # consumer reading by column index is unaffected.
   def to_csv : String
     CSV.build do |csv|
-      csv.row "Name", "Version", "PURL", "Type"
+      csv.row "Name", "Version", "PURL", "Type", "Scope", "BOM-Ref"
       if root = @metadata.try(&.component)
-        csv.row root.name, root.version, root.purl, root.component_type
+        csv_row(csv, root)
       end
       @components.each do |component|
-        csv.row component.name, component.version, component.purl, component.component_type
+        csv_row(csv, component)
       end
     end
+  end
+
+  private def csv_row(csv : CSV::Builder, component : Component) : Nil
+    csv.row csv_safe(component.name), csv_safe(component.version), csv_safe(component.purl),
+      csv_safe(component.component_type), csv_safe(component.scope), csv_safe(component.bom_ref)
+  end
+
+  # Neutralises spreadsheet formula injection. Component names and versions are
+  # copied verbatim out of `shard.yml`/`shard.lock`, so a name like
+  # `=cmd|'/C calc'!A0` would otherwise be evaluated as a formula when the
+  # export is opened. Prefixing with a single quote is the standard mitigation:
+  # the spreadsheet renders the cell as literal text and the quote is not part
+  # of the value. Only the CSV serializer needs this — JSON and XML consumers do
+  # not evaluate cell contents.
+  private def csv_safe(value : String?) : String?
+    return value if value.nil? || value.empty?
+    CSV_FORMULA_PREFIXES.includes?(value[0]) ? "'#{value}" : value
   end
 end

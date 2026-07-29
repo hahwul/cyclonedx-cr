@@ -1,0 +1,17 @@
+version: 2.0
+shards:
+  full_url:
+    github: https://github.com/Owner/Repo
+    version: 1.0.0
+  dot_git_suffix:
+    github: Owner/Repo.git
+    version: 1.0.0
+  trailing_slash:
+    github: Owner/Repo/
+    version: 1.0.0
+  too_deep:
+    github: Owner/Repo/extra
+    version: 1.0.0
+  bare_name:
+    github: Repo
+    version: 1.0.0

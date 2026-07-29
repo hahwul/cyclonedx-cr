@@ -7,9 +7,28 @@ FIXTURES = "spec/fixtures"
 # Runs the binary against the PURL-canonicalization fixture and returns a
 # name => purl map for the emitted components.
 private def canon_purls : Hash(String, String)
-  output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/purl_canon_lock.lock 2>&1`
+  purls_for("#{FIXTURES}/purl_canon_lock.lock")
+end
+
+# Same, for the look-alike/mirror/uppercase forge-host fixture.
+private def foreign_purls : Hash(String, String)
+  purls_for("#{FIXTURES}/foreign_host_lock.lock")
+end
+
+# Same, for the malformed `github:`/`gitlab:` shorthand fixture.
+private def shorthand_purls : Hash(String, String)
+  purls_for("#{FIXTURES}/shorthand_lock.lock")
+end
+
+# Runs the binary against a lock fixture and returns a name => purl map for the
+# emitted components. Components without a PURL are simply absent from the map.
+# Warning lines are stripped so fixtures that intentionally trip a warning still
+# yield parseable JSON.
+private def purls_for(lock : String) : Hash(String, String)
+  output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{lock} 2>&1`
+  json = output.lines.reject(&.starts_with?("Warning")).join("\n")
   result = {} of String => String
-  JSON.parse(output)["components"].as_a.each do |c|
+  JSON.parse(json)["components"].as_a.each do |c|
     if purl = c["purl"]?
       result[c["name"].as_s] = purl.as_s
     end
@@ -170,11 +189,20 @@ describe "App Integration" do
       output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --output-format csv 2>&1`
       $?.success?.should be_true
       lines = output.strip.split("\n")
-      lines[0].should eq("Name,Version,PURL,Type")
+      lines[0].should eq("Name,Version,PURL,Type,Scope,BOM-Ref")
       lines.size.should eq(4) # header + root application + 2 dependencies
       # The root application component (from metadata.component) is included so
       # the CSV is consistent with the JSON/XML output.
       output.should contain("test-app,0.1.0,,application")
+    end
+
+    it "neutralises spreadsheet formula injection in component names" do
+      # A shard.yml name beginning with '=' would be evaluated as a formula when
+      # the export is opened in Excel/Sheets, so it must be quoted out.
+      output = `#{BINARY} -s #{FIXTURES}/csv_injection_shard.yml -i #{FIXTURES}/empty_lock.lock --output-format csv 2>&1`
+      $?.success?.should be_true
+      output.should contain("'=cmd|")
+      output.should_not match(/^=cmd/m)
     end
   end
 
@@ -368,6 +396,108 @@ describe "App Integration" do
 
     it "produces a canonical PURL when a git URL has a trailing slash before a query" do
       canon_purls["gh_trailing_query"].should eq("pkg:github/owner/repo@8.0.0")
+    end
+  end
+
+  describe "PURL forge-host matching" do
+    # A PURL is an identity claim: `pkg:github/owner/repo` tells a scanner to
+    # resolve the component against that GitHub project. Matching `github.com`
+    # as a substring of the whole URL (rather than as the parsed host) attributes
+    # components to upstream projects they do not come from.
+    it "does not treat a look-alike host as the forge host" do
+      foreign_purls["lookalike_host"]?.should be_nil
+    end
+
+    it "does not treat a forge name appearing in the path as the forge host" do
+      # A corporate mirror serving upstream repos under `/github.com/owner/repo`
+      # is a real layout; the component is not hosted on GitHub.
+      foreign_purls["mirror_path"]?.should be_nil
+    end
+
+    it "matches the host, not the userinfo" do
+      foreign_purls["userinfo_host"]?.should be_nil
+    end
+
+    it "matches the forge host case-insensitively" do
+      # Hosts are case-insensitive (RFC 3986), so an uppercase host is still
+      # GitHub and must not silently lose its PURL.
+      foreign_purls["uppercase_host"].should eq("pkg:github/owner/repo@1.0.0")
+    end
+
+    it "matches the forge host case-insensitively for scp-style remotes" do
+      foreign_purls["scp_uppercase"].should eq("pkg:github/owner/repo@1.0.0")
+    end
+  end
+
+  describe "repository shorthand normalization" do
+    # `github:`/`gitlab:` in shard.lock is a plain `namespace/name`. Anything
+    # else is malformed, and a malformed PURL is worse than an absent one.
+    it "skips a PURL for a shorthand carrying a full URL" do
+      shorthand_purls["full_url"]?.should be_nil
+    end
+
+    it "skips a PURL for a shorthand with too many path segments" do
+      shorthand_purls["too_deep"]?.should be_nil
+    end
+
+    it "skips a PURL for a shorthand missing a namespace" do
+      shorthand_purls["bare_name"]?.should be_nil
+    end
+
+    it "warns when it skips a malformed shorthand" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/shorthand_lock.lock 2>&1`
+      output.should contain("malformed repository shorthand")
+    end
+
+    it "tolerates a .git suffix on a shorthand" do
+      shorthand_purls["dot_git_suffix"].should eq("pkg:github/owner/repo@1.0.0")
+    end
+
+    it "tolerates a trailing slash on a shorthand" do
+      shorthand_purls["trailing_slash"].should eq("pkg:github/owner/repo@1.0.0")
+    end
+  end
+
+  describe "unversioned lock entries" do
+    it "omits the version component from the PURL instead of asserting 'unknown'" do
+      # `unknown` is a not-known placeholder, not a version. The package-url
+      # encoding for an unknown version is to omit `@version` entirely.
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/unversioned_lock.lock 2>&1`
+      $?.success?.should be_true
+      components = JSON.parse(output)["components"].as_a
+
+      github_dep = components.find! { |c| c["name"] == "no_version_github" }
+      github_dep["purl"].should eq("pkg:github/owner/repo")
+
+      # Only the PURL is affected. `bom-ref` is an opaque identifier and the
+      # `version` field still carries the placeholder, so neither is asserted
+      # against here.
+      components.each { |c| c["purl"]?.try(&.as_s.should_not(contain("@unknown"))) }
+    end
+  end
+
+  describe "dependency scope" do
+    it "keeps a shard required when it is declared as both a runtime and a dev dependency" do
+      # Runtime membership wins: the shard is still needed at runtime, so
+      # reporting it as `optional` understates its scope.
+      output = `#{BINARY} -s #{FIXTURES}/dual_scope_shard.yml -i #{FIXTURES}/dual_scope_lock.lock 2>&1`
+      $?.success?.should be_true
+      components = JSON.parse(output)["components"].as_a
+
+      components.find! { |c| c["name"] == "shared_dep" }["scope"].should eq("required")
+      components.find! { |c| c["name"] == "dev_only" }["scope"].should eq("optional")
+    end
+  end
+
+  describe "generated BOM validation" do
+    it "fails instead of emitting a component with an empty name" do
+      # Blank names are already rejected for lock entries; the root component
+      # from shard.yml must not be able to bypass the same rule.
+      output = `#{BINARY} -s #{FIXTURES}/blank_name_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
+      $?.success?.should be_false
+      output.should contain("not valid CycloneDX")
+      output.should contain("$.metadata.component.name")
+      output.should contain("must not be empty")
     end
   end
 

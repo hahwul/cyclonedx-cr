@@ -10,8 +10,12 @@ module CycloneDX
     def initialize(@path : String, @message : String)
     end
 
-    def to_s : String
-      "#{@path}: #{@message}"
+    # Defined as `to_s(io)` rather than a no-arg `to_s : String`: string
+    # interpolation and `IO#<<` go through the IO form, so overriding only the
+    # no-arg form left `"#{error}"` printing the default `#<ValidationError:0x…>`
+    # while a direct `error.to_s` looked correct.
+    def to_s(io : IO) : Nil
+      io << @path << ": " << @message
     end
   end
 

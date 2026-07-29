@@ -1,0 +1,2 @@
+name: "=cmd|'/C calc'!A0"
+version: 0.1.0
