@@ -36,6 +36,7 @@ module CycloneDX
     @[JSON::Field(key: "trustZone")]
     getter trust_zone : String?
     getter data : Array(DataClassification)?
+    @[JSON::Field(converter: CycloneDX::LicenseChoiceConverter)]
     getter licenses : Array(License | LicenseExpression)?
     @[JSON::Field(key: "externalReferences")]
     getter external_references : Array(ExternalReference)?

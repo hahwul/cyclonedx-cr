@@ -1,32 +1,17 @@
 require "spec"
 require "../../src/cyclonedx/bom"
+require "../support/schema_validation"
 
-# Validates generated CycloneDX XML against the official CycloneDX XSD schemas
-# (vendored under spec/schemas/) using `xmllint`. This is the safety net for the
-# whole class of element-ordering / structure / required-attribute bugs that
-# string-matching specs cannot catch. When `xmllint` is unavailable the examples
-# are skipped (pending) so the suite still runs locally without it.
-
-private XMLLINT    = Process.find_executable("xmllint")
-private SCHEMA_DIR = File.expand_path(File.join(__DIR__, "..", "schemas"))
-
-# Runs xmllint against the bundled bom-<version>.xsd and returns {success, stderr}.
-private def xsd_validate(xml : String, version : String) : {Bool, String}
-  xsd = File.join(SCHEMA_DIR, "bom-#{version}.xsd")
-  catalog = File.join(SCHEMA_DIR, "catalog.xml")
-  tmp = File.tempfile("cdx-schema", ".xml")
-  begin
-    File.write(tmp.path, xml)
-    err = IO::Memory.new
-    status = Process.run(
-      "xmllint", ["--noout", "--schema", xsd, tmp.path],
-      env: {"XML_CATALOG_FILES" => catalog},
-      output: Process::Redirect::Close, error: err)
-    {status.success?, err.to_s}
-  ensure
-    tmp.delete
-  end
-end
+# Validates generated CycloneDX documents against the official CycloneDX
+# schemas (vendored under spec/schemas/): the XSDs via `xmllint` and the JSON
+# schemas via `check-jsonschema`. This is the safety net for the whole class of
+# element-ordering / structure / required-attribute / spec-version-gating bugs
+# that string-matching specs cannot catch.
+#
+# Both the CLI-shaped and the maximally-populated BOM are checked at *every*
+# supported spec version. The rich BOM populates fields and enum values that
+# were introduced after 1.4, so these examples are what prove the version gate
+# actually downgrades a document rather than merely omitting a few keys.
 
 # A BOM shaped like the actual CLI output: metadata.component (application) plus
 # library components, dependencies, and external references.
@@ -50,12 +35,21 @@ private def cli_bom(version : String) : CycloneDX::BOM
 end
 
 # A maximally-populated BOM exercising every library model type's serializer.
+#
+# It deliberately also carries values that only exist in *newer* spec versions —
+# a 1.6-only externalReference type, a 1.5-only composition aggregate, a 1.7-only
+# hash algorithm and two evidence identities (1.6+) — so that validating it at
+# 1.4 exercises the version gate's downgrade, drop and collapse paths rather
+# than only its field stripping.
 private def rich_bom(version : String) : CycloneDX::BOM
   org = CycloneDX::OrganizationalEntity.new(name: "Acme", url: ["https://acme.example"],
     contact: [CycloneDX::OrganizationalContact.new(name: "Jane", email: "j@acme.example")])
   contact = CycloneDX::OrganizationalContact.new(name: "Bob", email: "b@x.example")
   extref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com",
     comment: "c", hashes: [CycloneDX::Hash.new(algorithm: "SHA-256", content: "a" * 64)])
+  # 1.6-only type: downgrades to "other" below 1.6.
+  extref_new = CycloneDX::ExternalReference.new(ref_type: "rfc-9116",
+    url: "https://example.com/.well-known/security.txt")
   prop = CycloneDX::Property.new(name: "k", value: "v")
 
   lic_id = CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "declared")
@@ -64,14 +58,23 @@ private def rich_bom(version : String) : CycloneDX::BOM
   lic_expr = CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0", bom_ref: "le-1")
 
   evidence = CycloneDX::Evidence.new(
+    # Two identities: 1.5 permits only one, so the gate keeps the first.
     identity: [CycloneDX::EvidenceIdentity.new(field: "name", confidence: 0.9,
-      methods: [CycloneDX::EvidenceMethod.new(technique: "source-code-analysis", confidence: 0.8)])],
+      methods: [CycloneDX::EvidenceMethod.new(technique: "source-code-analysis", confidence: 0.8)]),
+               CycloneDX::EvidenceIdentity.new(field: "version", confidence: 0.5)],
     occurrences: [CycloneDX::EvidenceOccurrence.new(location: "/a"), CycloneDX::EvidenceOccurrence.new(location: "/b")],
     licenses: [lic_named] of CycloneDX::License | CycloneDX::LicenseExpression,
     copyright: [CycloneDX::EvidenceCopyright.new(text: "c1"), CycloneDX::EvidenceCopyright.new(text: "c2")])
+  # The ancestry entries are full components, and they carry a 1.6-only field so
+  # that gating is exercised inside a nested component too, not just at the top
+  # level of `components`.
   pedigree = CycloneDX::Pedigree.new(notes: "n",
     commits: [CycloneDX::Commit.new(uid: "u", url: "https://c.example", message: "m")],
-    patches: [CycloneDX::Patch.new(patch_type: "unofficial")])
+    patches: [CycloneDX::Patch.new(patch_type: "unofficial")],
+    ancestors: [CycloneDX::Component.new(name: "upstream", version: "0.9",
+      bom_ref: "upstream@0.9", tags: ["forked-from"])],
+    variants: [CycloneDX::Component.new(name: "variant", version: "0.9.1",
+      bom_ref: "variant@0.9.1")])
   swid = CycloneDX::Swid.new(tag_id: "swid-1", name: "sw", version: "1", tag_version: 2, patch: false)
   rn = CycloneDX::ReleaseNotes.new(release_type: "major", title: "t", description: "d",
     timestamp: "2024-01-01T00:00:00Z", aliases: ["a1"], tags: ["t1"], properties: [prop])
@@ -86,8 +89,11 @@ private def rich_bom(version : String) : CycloneDX::BOM
     description: "desc", author: "auth", publisher: "pub", copyright: "cp",
     supplier: org, manufacturer: org,
     licenses: [lic_id, lic_named] of CycloneDX::License | CycloneDX::LicenseExpression,
-    hashes: [CycloneDX::Hash.new(algorithm: "SHA-512", content: "b" * 128)],
-    external_references: [extref], properties: [prop],
+    # The Streebog hash is 1.7-only and has no older equivalent, so the gate
+    # drops that entry below 1.7 while keeping the SHA-512 one.
+    hashes: [CycloneDX::Hash.new(algorithm: "SHA-512", content: "b" * 128),
+             CycloneDX::Hash.new(algorithm: "Streebog-256", content: "c" * 64)],
+    external_references: [extref, extref_new], properties: [prop],
     tags: ["t1"], omnibor_id: ["gitoid:blob:sha256:abc"], swhid: ["swh:1:cnt:abc"],
     pedigree: pedigree, evidence: evidence, authors: [contact], swid: swid, release_notes: rn,
     crypto_properties: crypto,
@@ -128,7 +134,9 @@ private def rich_bom(version : String) : CycloneDX::BOM
       versions: [CycloneDX::AffectedVersion.new(version: "1.0.0", status: "affected")])],
     properties: [prop])
 
-  composition = CycloneDX::Composition.new(aggregate: "complete", bom_ref: "comp-1",
+  # 1.5-only aggregate: downgrades to "not_specified" at 1.4.
+  composition = CycloneDX::Composition.new(
+    aggregate: "incomplete_third_party_opensource_only", bom_ref: "comp-1",
     assemblies: ["root@1.0.0"], dependencies: ["dep@2.0"], vulnerabilities: ["vuln-1"])
   annot = CycloneDX::Annotation.new(bom_ref: "ann-1", subjects: ["root@1.0.0"],
     annotator: CycloneDX::Annotator.new(organization: org), timestamp: "2024-01-01T00:00:00Z", text: "note")
@@ -156,20 +164,14 @@ private def rich_bom(version : String) : CycloneDX::BOM
     definitions: definitions, external_references: [extref])
 end
 
-describe "CycloneDX XSD schema validation" do
-  ["1.4", "1.5", "1.6"].each do |version|
-    it "emits XSD-valid XML for a CLI-shaped BOM (spec #{version})" do
-      pending!("xmllint not installed") unless XMLLINT
-      ok, err = xsd_validate(cli_bom(version).to_xml, version)
-      fail("bom-#{version}.xsd validation failed:\n#{err}") unless ok
-      ok.should be_true
+describe "CycloneDX schema validation" do
+  SchemaValidation::VERSIONS.each do |version|
+    it "emits schema-valid JSON and XML for a CLI-shaped BOM (spec #{version})" do
+      assert_schema_valid(cli_bom(version), "CLI-shaped BOM")
     end
-  end
 
-  it "emits XSD-valid XML for a fully-populated library BOM (spec 1.6)" do
-    pending!("xmllint not installed") unless XMLLINT
-    ok, err = xsd_validate(rich_bom("1.6").to_xml, "1.6")
-    fail("rich BOM bom-1.6.xsd validation failed:\n#{err}") unless ok
-    ok.should be_true
+    it "emits schema-valid JSON and XML for a fully-populated BOM (spec #{version})" do
+      assert_schema_valid(rich_bom(version), "rich BOM")
+    end
   end
 end

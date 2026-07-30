@@ -20,14 +20,25 @@ module CycloneDX
   end
 
   class Validator
+    # Problems that make the serialized document invalid. `validate` fails on
+    # these.
     getter errors : Array(ValidationError)
+
+    # Places where the BOM was *valid but over-specified* for its declared
+    # `specVersion`, and the version gate downgraded it on the way out: a field
+    # stripped, an enum value swapped for its catch-all, a repeated element
+    # collapsed. The output is schema-valid, so these do not fail `validate`, but
+    # they are the record of what the declared version could not carry.
+    getter warnings : Array(ValidationError)
 
     def initialize
       @errors = [] of ValidationError
+      @warnings = [] of ValidationError
     end
 
     def validate(bom : BOM) : Bool
       @errors.clear
+      @warnings.clear
       validate_bom(bom)
       @errors.empty?
     end
@@ -75,22 +86,125 @@ module CycloneDX
         validate_metadata(md, "$.metadata")
       end
 
+      validate_document(bom)
       validate_spec_version_fields(bom)
     end
 
-    # Flags any field that is populated on the object model but is newer than
-    # the declared `specVersion`. Such fields would be stripped on
-    # serialization, so surfacing them as errors tells direct object-model
-    # users their BOM is over-specified for the version they declared.
+    # Keys whose values are `bom-ref` *references* rather than definitions.
+    #
+    # Restricted to the ones this object model can actually populate. Notably
+    # absent are the `declarations` cross-links, whose targets (declaration
+    # evidence, attestations) are not modelled yet, so every such reference would
+    # look dangling.
+    REF_KEYS = {
+      "ref", "dependsOn", "provides",
+      "assemblies", "dependencies", "vulnerabilities", "subjects",
+    }
+
+    # A reference into a *different* BOM (`urn:cdx:<serial>/<version>#<bom-ref>`)
+    # rather than a local `bom-ref`. Those cannot be resolved from here.
+    BOM_LINK_PREFIX = "urn:cdx:"
+
+    # Whole-document checks that need to see every object at once, run over the
+    # serialized form.
+    #
+    # Walking the emitted JSON rather than the object model is deliberate:
+    # `bom-ref` identifiers and the references to them are spread across
+    # components, services, vulnerabilities, licenses, compositions, formulation,
+    # declarations and definitions, and any hand-written traversal would miss the
+    # ones added later. Every `bom-ref` in the document is found by construction.
+    private def validate_document(bom : BOM)
+      document = JSON.parse(bom.to_json)
+      defined = {} of String => String
+      references = [] of {String, String}
+
+      collect_document(document, "$", defined, references)
+
+      references.each do |(path, ref)|
+        next if defined.has_key?(ref)
+        next if ref.starts_with?(BOM_LINK_PREFIX)
+        add_error(path, "references unknown bom-ref '#{ref}'")
+      end
+    end
+
+    private def collect_document(node : JSON::Any, path : String,
+                                 defined : ::Hash(String, String),
+                                 references : Array({String, String}))
+      if obj = node.as_h?
+        if ref = obj["bom-ref"]?.try(&.as_s?)
+          if first = defined[ref]?
+            add_error("#{path}.bom-ref", "duplicate bom-ref '#{ref}', already used by #{first}")
+          else
+            defined[ref] = path
+          end
+        end
+
+        validate_license_choice(obj, path)
+
+        obj.each do |key, value|
+          child_path = "#{path}.#{key}"
+          if REF_KEYS.includes?(key)
+            collect_references(value, child_path, references)
+            # `dependencies` is a reference list inside a composition but the
+            # dependency graph itself at the document root, so keep descending.
+          end
+          collect_document(value, child_path, defined, references)
+        end
+      elsif arr = node.as_a?
+        arr.each_with_index do |value, i|
+          collect_document(value, "#{path}[#{i}]", defined, references)
+        end
+      end
+    end
+
+    private def collect_references(node : JSON::Any, path : String,
+                                   references : Array({String, String}))
+      if ref = node.as_s?
+        references << {path, ref}
+      elsif arr = node.as_a?
+        arr.each_with_index do |value, i|
+          value.as_s?.try { |item| references << {"#{path}[#{i}]", item} }
+        end
+      end
+    end
+
+    # A `licenses` entry's `license` object must carry an `id` or a `name`; the
+    # schema models them as a `oneOf`, so an object with neither is invalid. This
+    # used to slip through and emit `{"license":{}}`.
+    private def validate_license_choice(obj : ::Hash(String, JSON::Any), path : String)
+      license = obj["license"]?.try(&.as_h?)
+      return unless license
+      return if license.has_key?("id") || license.has_key?("name")
+      add_error("#{path}.license", "must have either an 'id' or a 'name'")
+    end
+
+    # Flags anything populated on the object model that is newer than the
+    # declared `specVersion` — a field that does not exist yet, an enum value
+    # that is not permitted yet, or a shape the older schema cannot express.
+    #
+    # Anything the gate could repair becomes a warning: the emitted document is
+    # schema-valid, so it would be wrong to call the BOM invalid, but the caller
+    # should know data was dropped or rewritten. Only what the gate could *not*
+    # repair is an error. The messages come from the gate itself, which is what
+    # performed the edit.
     private def validate_spec_version_fields(bom : BOM)
       VersionGate.each_violation(bom) do |v|
-        add_error("#{v.path}.#{v.field}", "field '#{v.field}' requires specVersion >= #{v.min_version}, but BOM declares #{bom.spec_version}")
+        path = "#{v.path}.#{v.field}"
+        if v.repaired
+          @warnings << ValidationError.new(path, v.message)
+        else
+          add_error(path, v.message)
+        end
       end
     end
 
     private def validate_component(comp : Component, path : String)
       add_error("#{path}.name", "must not be empty") if comp.name.empty?
-      add_error("#{path}.version", "must not be empty") if comp.version.empty?
+      # `version` may legitimately be absent, but an explicitly empty string is
+      # neither a version nor an omission.
+      if (version = comp.version) && version.empty?
+        add_error("#{path}.version", "must not be empty; omit it instead when unknown")
+      end
 
       unless Component::VALID_TYPES.includes?(comp.component_type)
         add_error("#{path}.type", "invalid type '#{comp.component_type}', valid: #{Component::VALID_TYPES.join(", ")}")
@@ -99,6 +213,18 @@ module CycloneDX
       if scope = comp.scope
         unless Component::VALID_SCOPES.includes?(scope)
           add_error("#{path}.scope", "invalid scope '#{scope}'")
+        end
+      end
+
+      if cpe = comp.cpe
+        unless cpe.matches?(CPE_PATTERN)
+          add_error("#{path}.cpe", "'#{cpe}' is not a well-formed CPE")
+        end
+      end
+
+      if data = comp.data
+        data.each_with_index do |entry, i|
+          validate_component_data(entry, "#{path}.data[#{i}]")
         end
       end
 
@@ -117,6 +243,22 @@ module CycloneDX
       if sub = comp.components
         sub.each_with_index do |c, i|
           validate_component(c, "#{path}.components[#{i}]")
+        end
+      end
+    end
+
+    # A CPE 2.2 URI (`cpe:/part:vendor:…`) or a CPE 2.3 formatted string
+    # (`cpe:2.3:` plus eleven colon-separated components).
+    #
+    # A shape check, not the XSD's full pattern: it exists to reject a value that
+    # is plainly not a CPE, which is the mistake that actually happens. Fields
+    # containing escaped colons (`\:`) are rare and not accounted for.
+    CPE_PATTERN = /\A(cpe:\/[aho]?(:[^:]*){0,6}|cpe:2\.3(:[^:]*){11})\z/i
+
+    private def validate_component_data(data : ComponentData, path : String)
+      if data_type = data.data_type
+        unless ComponentData::VALID_DATA_TYPES.includes?(data_type)
+          add_error("#{path}.type", "invalid data type '#{data_type}', valid: #{ComponentData::VALID_DATA_TYPES.join(", ")}")
         end
       end
     end
@@ -221,6 +363,12 @@ module CycloneDX
     end
 
     private def validate_metadata(metadata : Metadata, path : String)
+      if timestamp = metadata.timestamp
+        unless valid_timestamp?(timestamp)
+          add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
+        end
+      end
+
       if lifecycles = metadata.lifecycles
         lifecycles.each_with_index do |lc, i|
           if phase = lc.phase
@@ -238,6 +386,16 @@ module CycloneDX
       if comp = metadata.component
         validate_component(comp, "#{path}.component")
       end
+    end
+
+    # Both schema families type timestamps as a date-time (`xs:dateTime` /
+    # `format: date-time`), so a free-form string is a validation failure
+    # downstream rather than here.
+    private def valid_timestamp?(timestamp : String) : Bool
+      Time.parse_rfc3339(timestamp)
+      true
+    rescue Time::Format::Error
+      false
     end
 
     private def add_error(path : String, message : String)

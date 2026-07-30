@@ -1,0 +1,22 @@
+version: 2.0
+shards:
+  gh:
+    github: kemalcr/Kemal
+    version: 1.4.0
+  gh_commit:
+    git: https://github.com/hahwul/spdx.cr.git
+    version: 0.1.0+git.commit.21ac950936830412628cbf631bf48ece6dce9a48
+  bb:
+    bitbucket: Team/BBRepo
+    version: 1.2.3
+  cb:
+    codeberg: team/cbrepo
+    version: 2.0.0
+  hgdep:
+    hg: https://hg.example.com/repo
+    version: 0.5.0
+  fossildep:
+    fossil: https://fossil.example.com/repo
+    version: 0.6.0
+  localdep:
+    path: ../localdep

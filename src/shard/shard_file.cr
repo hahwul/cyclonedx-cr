@@ -8,9 +8,11 @@ class ShardFile
 
   # The name of the project/shard.
   getter name : String
-  # The version of the project/shard. Optional because a `shard.yml` may omit
-  # it (e.g. an application that is never published); defaults to "unknown".
-  getter version : String = "unknown"
+  # The version of the project/shard. Optional because a `shard.yml` may omit it
+  # (e.g. an application that is never published), in which case it stays nil and
+  # the generated component simply carries no `version` — which is what
+  # CycloneDX means by an unknown version.
+  getter version : String?
 
   # Optional fields
   getter description : String?
@@ -23,6 +25,15 @@ class ShardFile
   getter dependencies : YAML::Any?
   @[YAML::Field(key: "development_dependencies")]
   getter development_dependencies : YAML::Any?
+
+  # Build targets (name -> {main: ...}). Their presence is what distinguishes an
+  # application shard from a library one.
+  getter targets : YAML::Any?
+
+  # True when the shard declares at least one build target.
+  def targets? : Bool
+    !!@targets.try(&.as_h?).try { |targets| !targets.empty? }
+  end
 
   # Returns the set of dependency names declared as runtime dependencies.
   def runtime_dependency_names : Set(String)

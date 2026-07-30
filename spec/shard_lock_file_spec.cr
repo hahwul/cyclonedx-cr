@@ -60,7 +60,7 @@ describe ShardLockFile do
       shard.github.should be_nil
     end
 
-    it "parses a path dependency without a version (defaults to 'unknown')" do
+    it "leaves the version nil for a path dependency that has none" do
       yaml = <<-YAML
         version: 2.0
         shards:
@@ -73,7 +73,51 @@ describe ShardLockFile do
 
       shard = lock_file.shards["local_shard"]
       shard.path.should eq("/path/to/shard")
-      shard.version.should eq("unknown")
+      shard.version.should be_nil
+      shard.commit.should be_nil
+    end
+
+    it "parses the remaining shards resolvers" do
+      yaml = <<-YAML
+        version: 2.0
+        shards:
+          bb:
+            bitbucket: team/bbrepo
+            version: 1.2.3
+          cb:
+            codeberg: team/cbrepo
+            version: 2.0.0
+          hgdep:
+            hg: https://hg.example.com/repo
+            version: 0.5.0
+          fossildep:
+            fossil: https://fossil.example.com/repo
+            version: 0.6.0
+        YAML
+
+      shards = ShardLockFile.from_yaml(yaml).shards
+      shards["bb"].bitbucket.should eq("team/bbrepo")
+      shards["cb"].codeberg.should eq("team/cbrepo")
+      shards["hgdep"].hg.should eq("https://hg.example.com/repo")
+      shards["fossildep"].fossil.should eq("https://fossil.example.com/repo")
+    end
+
+    it "extracts the commit SHA shards embeds in a git version" do
+      yaml = <<-YAML
+        version: 2.0
+        shards:
+          spdx:
+            git: https://github.com/hahwul/spdx.cr.git
+            version: 0.1.0+git.commit.21ac950936830412628cbf631bf48ece6dce9a48
+          tagged:
+            git: https://github.com/o/r.git
+            version: 1.2.3
+        YAML
+
+      shards = ShardLockFile.from_yaml(yaml).shards
+      shards["spdx"].commit.should eq("21ac950936830412628cbf631bf48ece6dce9a48")
+      # A plain semver is the tag itself, not a commit.
+      shards["tagged"].commit.should be_nil
     end
 
     it "parses an empty shards section" do

@@ -106,18 +106,124 @@ describe "BOM JSON deserialization" do
     vulns[0].analysis.not_nil!.state.should eq("not_affected")
   end
 
-  it "deserializes licenses (simple and expression)" do
+  # A `licenses` entry is a `{"license": {...}}` wrapper or a bare
+  # `{"expression": "..."}` — never a flat license object. Reading the wrapper
+  # used to produce an all-nil `License` without raising, which then
+  # re-serialized as the schema-invalid `{"license":{}}`.
+  it "deserializes a wrapped license, keeping its fields" do
     json = %q({
       "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
       "serialNumber":"urn:uuid:test",
       "components":[{
         "type":"library","name":"lib","version":"1.0",
-        "licenses":[{"id":"MIT","url":"https://opensource.org/licenses/MIT"}]
+        "licenses":[{"license":{
+          "id":"MIT","url":"https://opensource.org/licenses/MIT",
+          "bom-ref":"lic-1","acknowledgement":"declared"
+        }}]
       }]
     })
     bom = CycloneDX::BOM.from_json(json)
     licenses = bom.components[0].licenses.not_nil!
     licenses.size.should eq(1)
+    license = licenses[0].as(CycloneDX::License)
+    license.id.should eq("MIT")
+    license.url.should eq("https://opensource.org/licenses/MIT")
+    license.bom_ref.should eq("lic-1")
+    license.acknowledgement.should eq("declared")
+  end
+
+  it "deserializes a license expression entry" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[{
+        "type":"library","name":"lib","version":"1.0",
+        "licenses":[{"expression":"MIT OR Apache-2.0","bom-ref":"le-1"}]
+      }]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    expression = bom.components[0].licenses.not_nil![0].as(CycloneDX::LicenseExpression)
+    expression.expression.should eq("MIT OR Apache-2.0")
+    expression.bom_ref.should eq("le-1")
+  end
+
+  it "round-trips licenses back to the wrapped shape" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[{
+        "type":"library","name":"lib","version":"1.0",
+        "licenses":[{"license":{"id":"MIT"}},{"expression":"MIT OR Apache-2.0"}]
+      }]
+    })
+    out = CycloneDX::BOM.from_json(json).to_json
+    out.should contain(%("licenses":[{"license":{"id":"MIT"}},{"expression":"MIT OR Apache-2.0"}]))
+    out.should_not contain(%("license":{}))
+  end
+
+  it "raises on a licenses entry that is neither a wrapper nor an expression" do
+    json = %q({
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "components":[{
+        "type":"library","name":"lib","version":"1.0",
+        "licenses":[{"id":"MIT"}]
+      }]
+    })
+    expect_raises(JSON::ParseException, /licenses entry/) do
+      CycloneDX::BOM.from_json(json)
+    end
+  end
+
+  # Everything a current third-party producer emits that the reader used to
+  # choke on: the 1.5+ object form of `metadata.tools`, a `$schema` key, and a
+  # component with no `version`.
+  it "deserializes a third-party 1.6 BOM" do
+    json = %q({
+      "$schema":"http://cyclonedx.org/schema/bom-1.6.schema.json",
+      "bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+      "metadata":{
+        "timestamp":"2026-01-01T00:00:00Z",
+        "tools":{"components":[
+          {"type":"application","name":"syft","version":"1.0","publisher":"anchore"}
+        ]},
+        "component":{"type":"library","bom-ref":"root","name":"libfoo"}
+      },
+      "components":[{"type":"library","bom-ref":"c1","name":"openssl",
+        "licenses":[{"license":{"id":"Apache-2.0"}}]}]
+    })
+    bom = CycloneDX::BOM.from_json(json)
+    md = bom.metadata.not_nil!
+
+    md.tools.should be_nil
+    tool_components = md.tool_components.not_nil!
+    tool_components.size.should eq(1)
+    tool_components[0].name.should eq("syft")
+    tool_components[0].publisher.should eq("anchore")
+
+    md.component.not_nil!.name.should eq("libfoo")
+    md.component.not_nil!.version.should be_nil
+    bom.components[0].licenses.not_nil![0].as(CycloneDX::License).id.should eq("Apache-2.0")
+  end
+
+  it "deserializes a BOM with no components at all" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "services":[{"name":"api"}]})
+    bom = CycloneDX::BOM.from_json(json)
+    bom.components.should be_empty
+    bom.services.not_nil![0].name.should eq("api")
+  end
+
+  it "re-emits the object form of metadata.tools it parsed" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+      "serialNumber":"urn:uuid:test",
+      "metadata":{"tools":{"components":[{"type":"application","name":"syft"}]}},
+      "components":[]})
+    out = CycloneDX::BOM.from_json(json).to_json
+    out.should contain(%("tools":{"components":[))
+    out.should contain(%("name":"syft"))
   end
 
   it "ignores unknown fields gracefully (forward compatibility)" do

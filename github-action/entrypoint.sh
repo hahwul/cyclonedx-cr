@@ -6,6 +6,15 @@ LOCK_FILE=${2:-shard.lock}
 OUTPUT_FILE=$3
 SPEC_VERSION=${4:-1.6}
 OUTPUT_FORMAT=${5:-json}
+REPRODUCIBLE=${6:-false}
+
+# `--reproducible` pins the timestamp and serial number so that re-running over
+# unchanged inputs yields an identical file — needed when the SBOM is committed,
+# signed, or diffed between builds.
+REPRODUCIBLE_FLAG=""
+if [ "$REPRODUCIBLE" = "true" ]; then
+    REPRODUCIBLE_FLAG="--reproducible"
+fi
 
 # Validate inputs
 if [ ! -f "$SHARD_FILE" ]; then
@@ -44,7 +53,7 @@ if [ "$OUTPUT_TO_FILE" = "false" ]; then
 fi
 
 # Execute the command
-if ! "$CYCLONEDX_BIN" -s "$SHARD_FILE" -i "$LOCK_FILE" --spec-version "$SPEC_VERSION" --output-format "$OUTPUT_FORMAT" -o "$OUTPUT_FILE"; then
+if ! "$CYCLONEDX_BIN" -s "$SHARD_FILE" -i "$LOCK_FILE" --spec-version "$SPEC_VERSION" --output-format "$OUTPUT_FORMAT" $REPRODUCIBLE_FLAG -o "$OUTPUT_FILE"; then
     echo "Error: cyclonedx-cr command failed"
     exit 1
 fi

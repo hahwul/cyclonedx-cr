@@ -21,6 +21,7 @@ class App
   DEFAULT_LOCK_FILE  = "shard.lock"
 
   COMPONENT_TYPE_APPLICATION = "application"
+  COMPONENT_TYPE_LIBRARY     = "library"
   REF_TYPE_WEBSITE           = "website"
   REF_TYPE_VCS               = "vcs"
   PURL_GITHUB_PREFIX         = "pkg:github/"
@@ -29,6 +30,19 @@ class App
 
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
+
+  # `shard.lock` cannot express transitive edges, so the dependency graph is
+  # always declared incomplete. See `build_compositions`.
+  COMPOSITION_INCOMPLETE = "incomplete"
+
+  # The structured `component.authors` array was introduced in 1.6.
+  AUTHORS_MIN_VERSION = "1.6"
+
+  # Under `--reproducible` the two fields that would otherwise change on every
+  # run are pinned: the timestamp to the Unix epoch and the serial number to the
+  # RFC 4122 nil UUID, which is the conventional "no identity assigned" value.
+  REPRODUCIBLE_TIMESTAMP     = "1970-01-01T00:00:00Z"
+  REPRODUCIBLE_SERIAL_NUMBER = "urn:uuid:00000000-0000-0000-0000-000000000000"
 
   # Known forge hosts, matched against the parsed host of a git remote (see
   # `split_git_remote`). Matching the *host* rather than searching the whole URL
@@ -45,13 +59,38 @@ class App
   # path segments.
   private OWNER_REPO_SEGMENTS = 2
 
+  # The `owner/repo` shorthand resolvers, in the order `generate_purl` tries
+  # them, with the PURL type each maps to and whether that type case-folds the
+  # namespace/name.
+  #
+  # `codeberg:` has no registered PURL type, so it produces no PURL — but its
+  # repository URL is still recorded as a `vcs` external reference, which is the
+  # only identifier available for it.
+  private CODEBERG_HOST = "codeberg.org"
+
+  # Base URLs used to reconstruct a browsable repository URL from an
+  # `owner/repo` shorthand, so that every dependency carries a `vcs` external
+  # reference even when it gets no PURL.
+  private FORGE_BASE_URLS = {
+    "github"    => "https://github.com/",
+    "gitlab"    => "https://gitlab.com/",
+    "bitbucket" => "https://bitbucket.org/",
+    "codeberg"  => "https://codeberg.org/",
+  }
+
   # Holds parsed command-line options.
   record Options,
     shard_file : String,
     shard_lock_file : String,
     output_file : String,
     spec_version : String,
-    output_format : String
+    output_format : String,
+    reproducible : Bool do
+    # The BOM serial number to use, or nil to let a random one be generated.
+    def serial_number : String?
+      REPRODUCIBLE_SERIAL_NUMBER if reproducible
+    end
+  end
 
   # Runs the main application logic.
   def run
@@ -72,10 +111,20 @@ class App
   # for `shard.lock` entries; this closes the same gap for the root component
   # and gives the whole BOM tree a schema safety net. Emitting an invalid SBOM
   # that a downstream consumer rejects later is worse than failing here, so this
-  # is a hard error rather than a warning.
+  # is a hard error.
+  #
+  # Spec-version downgrades are reported separately as warnings: the version gate
+  # has already made the output valid, and the user asked for the older version,
+  # so telling them what that version could not carry is information rather than
+  # a failure.
   private def validate_bom(bom : CycloneDX::BOM) : Bool
     validator = CycloneDX::Validator.new
-    return true if validator.validate(bom)
+    valid = validator.validate(bom)
+
+    validator.warnings.each do |warning|
+      STDERR.puts "Warning: #{warning}"
+    end
+    return true if valid
 
     STDERR.puts "Error: the generated SBOM is not valid CycloneDX:"
     validator.errors.each { |error| STDERR.puts "  - #{error}" }
@@ -89,6 +138,7 @@ class App
     output_file = ""
     spec_version = DEFAULT_VERSION
     output_format = DEFAULT_FORMAT
+    reproducible = false
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: cyclonedx-cr [arguments]"
@@ -97,6 +147,7 @@ class App
       parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |file| output_file = file }
       parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| spec_version = v }
       parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |format| output_format = format.downcase }
+      parser.on("--reproducible", "Pin the timestamp and serial number so repeated runs over unchanged inputs produce identical output") { reproducible = true }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -132,7 +183,8 @@ class App
       shard_lock_file: shard_lock_file,
       output_file: output_file,
       spec_version: spec_version,
-      output_format: output_format
+      output_format: output_format,
+      reproducible: reproducible
     )
   end
 
@@ -169,7 +221,7 @@ class App
   # Generates the BOM from input files.
   private def generate_bom(options : Options) : CycloneDX::BOM
     shard = read_yaml_file(options.shard_file, ShardFile)
-    main_component = parse_main_component(shard)
+    main_component = parse_main_component(shard, options.spec_version)
     # A shard may be declared in BOTH `dependencies` and
     # `development_dependencies`. It is still required at runtime, so runtime
     # membership wins: marking such a component `optional` understates its
@@ -180,8 +232,8 @@ class App
     dependencies = drop_root_collisions(dependencies, main_component.bom_ref)
 
     tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
-    timestamp = Time.utc.to_rfc3339
-    metadata = CycloneDX::Metadata.new(component: main_component, tools: [tool], timestamp: timestamp)
+    metadata = CycloneDX::Metadata.new(
+      component: main_component, tools: [tool], timestamp: bom_timestamp(options))
 
     # Build dependency graph
     dep_graph = build_dependency_graph(main_component, dependencies)
@@ -190,8 +242,38 @@ class App
       spec_version: options.spec_version,
       metadata: metadata,
       components: dependencies,
-      dependencies: dep_graph
+      dependencies: dep_graph,
+      compositions: build_compositions(main_component, dependencies),
+      serial_number: options.serial_number
     )
+  end
+
+  # `shard.lock` is a flat list of resolved shards: it records *what* is
+  # installed but not which shard required which. The dependency graph therefore
+  # only knows the root's direct edges, and every other node is listed with no
+  # `dependsOn`.
+  #
+  # Left unqualified, a consumer cannot tell that apart from a genuinely complete
+  # graph of leaf dependencies. `compositions` is how CycloneDX expresses the
+  # difference, so the whole assembly is declared `incomplete`.
+  private def build_compositions(main_component : CycloneDX::Component,
+                                 dependencies : Array(CycloneDX::Component)) : Array(CycloneDX::Composition)?
+    refs = [] of String
+    main_component.bom_ref.try { |ref| refs << ref }
+    dependencies.each { |dep| dep.bom_ref.try { |ref| refs << ref } }
+    return if refs.empty?
+
+    [CycloneDX::Composition.new(
+      aggregate: COMPOSITION_INCOMPLETE,
+      dependencies: refs,
+    )]
+  end
+
+  # The BOM timestamp. Fixed to the Unix epoch under `--reproducible` so two
+  # runs over the same inputs produce byte-identical output.
+  private def bom_timestamp(options : Options) : String
+    return REPRODUCIBLE_TIMESTAMP if options.reproducible
+    Time.utc.to_rfc3339
   end
 
   # Writes the BOM output to file or stdout.
@@ -242,9 +324,11 @@ class App
     exit(1)
   end
 
-  # Generates a bom-ref string for a component.
-  private def generate_bom_ref(name : String, version : String) : String
-    "#{name}@#{version}"
+  # Generates a bom-ref string for a component. A component with no known
+  # version is referenced by name alone rather than by a fabricated
+  # `name@unknown`.
+  private def generate_bom_ref(name : String, version : String?) : String
+    version ? "#{name}@#{version}" : name
   end
 
   # Simple URL validation pattern (http/https/git schemes)
@@ -260,6 +344,9 @@ class App
 
   # SPDX license expression operators
   private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
+
+  # `shard.yml` author entries: `Name <email>`, where the name may be absent.
+  private AUTHOR_PATTERN = /\A([^<]*)<([^>]+)>\s*\z/
 
   # Build a licenses array for a shard.yml license field.
   #
@@ -299,7 +386,12 @@ class App
   end
 
   # Parses the main component information from a parsed ShardFile.
-  private def parse_main_component(shard : ShardFile) : CycloneDX::Component
+  #
+  # `spec_version` is needed because the structured `authors` array only exists
+  # from 1.6. The version gate would strip it from an older document anyway, but
+  # it would also report the loss — and a warning on every 1.4/1.5 run about a
+  # field the user never asked for is just noise.
+  private def parse_main_component(shard : ShardFile, spec_version : String) : CycloneDX::Component
     licenses = nil
     shard.license.try do |license|
       licenses = build_licenses(license)
@@ -314,15 +406,46 @@ class App
     author = shard.authors.try(&.first?)
 
     CycloneDX::Component.new(
-      component_type: COMPONENT_TYPE_APPLICATION,
+      component_type: root_component_type(shard),
       name: shard.name,
       version: shard.version,
       description: shard.description,
       author: author,
+      authors: shard_authors(shard, spec_version),
       licenses: licenses,
       external_references: external_refs,
       bom_ref: generate_bom_ref(shard.name, shard.version)
     )
+  end
+
+  # A shard that declares `targets:` builds executables and is an application;
+  # one that does not is a library other shards depend on. Reporting every
+  # project as an application mislabels the majority of published shards.
+  private def root_component_type(shard : ShardFile) : String
+    shard.targets? ? COMPONENT_TYPE_APPLICATION : COMPONENT_TYPE_LIBRARY
+  end
+
+  # `shard.yml` authors are free-form `Name <email>` strings. The deprecated
+  # single `author` field can only hold the first one, so from 1.6 the full list
+  # is also emitted as the structured `authors` array.
+  private def shard_authors(shard : ShardFile,
+                            spec_version : String) : Array(CycloneDX::OrganizationalContact)?
+    return if CycloneDX::VersionGate.newer?(AUTHORS_MIN_VERSION, spec_version)
+    authors = shard.authors
+    return if authors.nil? || authors.empty?
+    authors.map { |author| parse_author(author) }
+  end
+
+  # Splits `Name <email>` into its parts. A string with no angle-bracketed
+  # address becomes a bare name.
+  private def parse_author(author : String) : CycloneDX::OrganizationalContact
+    if m = author.match(AUTHOR_PATTERN)
+      name = m[1].strip
+      CycloneDX::OrganizationalContact.new(
+        name: name.empty? ? nil : name, email: m[2].strip)
+    else
+      CycloneDX::OrganizationalContact.new(name: author.strip)
+    end
   end
 
   # Builds an external reference for a shard.yml URL field, or nil when the URL
@@ -363,9 +486,43 @@ class App
         version: details.version,
         purl: generate_purl(details),
         bom_ref: generate_bom_ref(name, details.version),
-        scope: scope
+        scope: scope,
+        external_references: dependency_external_refs(details)
       )
     end
+  end
+
+  # Records where a locked dependency came from.
+  #
+  # `shard.lock` always names the source, but only GitHub/GitLab/Bitbucket map to
+  # a PURL type. Without this, a Mercurial, Fossil, Codeberg or plain-git
+  # dependency ended up with no identifier of any kind — the URL was parsed,
+  # found not to match a known forge, and thrown away. A `vcs` reference keeps it.
+  private def dependency_external_refs(details : ShardLockEntry) : Array(CycloneDX::ExternalReference)?
+    url = source_url(details)
+    return unless url
+    ref = build_external_reference(REF_TYPE_VCS, url)
+    ref ? [ref] : nil
+  end
+
+  # The repository URL for a lock entry, reconstructed from the `owner/repo`
+  # shorthand resolvers or taken verbatim from the URL-based ones. `path:`
+  # dependencies have no remote URL at all.
+  private def source_url(details : ShardLockEntry) : String?
+    FORGE_BASE_URLS.each do |forge, base|
+      shorthand =
+        case forge
+        when "github"    then details.github
+        when "gitlab"    then details.gitlab
+        when "bitbucket" then details.bitbucket
+        when "codeberg"  then details.codeberg
+        end
+      next unless shorthand
+      path = clean_repo_path(shorthand, OWNER_REPO_SEGMENTS)
+      return path ? "#{base}#{path}" : nil
+    end
+
+    details.git || details.hg || details.fossil
   end
 
   # Drops any locked dependency whose bom-ref equals the root component's
@@ -417,17 +574,37 @@ class App
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.
-  # Supports GitHub, GitLab and (via Git URL) Bitbucket repositories.
+  #
+  # Covers the `github:`, `gitlab:` and `bitbucket:` shorthands as well as a
+  # `git:` URL pointing at one of those forges. The remaining shards resolvers
+  # (`codeberg:`, `hg:`, `fossil:`, `path:`) have no registered PURL type, so
+  # they get none — `dependency_external_refs` records their source URL instead.
   private def generate_purl(details : ShardLockEntry) : String?
+    version = purl_version(details)
+
     if github_repo = details.github
       repo = shorthand_repo_path(github_repo, OWNER_REPO_SEGMENTS, OWNER_REPO_SEGMENTS)
-      build_purl(PURL_GITHUB_PREFIX, repo, details.version, lowercase: true) if repo
+      build_purl(PURL_GITHUB_PREFIX, repo, version, lowercase: true) if repo
     elsif gitlab_repo = details.gitlab
       repo = shorthand_repo_path(gitlab_repo, OWNER_REPO_SEGMENTS)
-      build_purl(PURL_GITLAB_PREFIX, repo, details.version, lowercase: false) if repo
+      build_purl(PURL_GITLAB_PREFIX, repo, version, lowercase: false) if repo
+    elsif bitbucket_repo = details.bitbucket
+      repo = shorthand_repo_path(bitbucket_repo, OWNER_REPO_SEGMENTS, OWNER_REPO_SEGMENTS)
+      build_purl(PURL_BITBUCKET_PREFIX, repo, version, lowercase: true) if repo
     elsif git_url = details.git
-      parse_purl_from_git_url(git_url, details.version)
+      parse_purl_from_git_url(git_url, version)
     end
+  end
+
+  # The version to put in a forge PURL.
+  #
+  # `pkg:github`, `pkg:gitlab` and `pkg:bitbucket` define the version as a tag or
+  # a commit. shards records `X.Y.Z+git.commit.<sha>` when the locked commit is
+  # not a released tag, and that composite string resolves to neither, so the
+  # embedded SHA is used instead. A plain `X.Y.Z` is left alone; it is the tag
+  # (modulo a `v` prefix, which the forges resolve either way).
+  private def purl_version(details : ShardLockEntry) : String?
+    details.commit || details.version
   end
 
   # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only
@@ -445,7 +622,7 @@ class App
 
   # Extracts a PURL from a Git URL by matching known hosts (GitHub, GitLab,
   # Bitbucket). Returns nil for unrecognised hosts or unrecognised URL shapes.
-  private def parse_purl_from_git_url(git_url : String, version : String) : String?
+  private def parse_purl_from_git_url(git_url : String, version : String?) : String?
     host, path = split_git_remote(strip_url_query_fragment(git_url)) || return
 
     case host
@@ -518,14 +695,13 @@ class App
   # and require it lowercased; gitlab paths are case-sensitive and left as-is.
   # The version is always percent-encoded but never case-folded.
   #
-  # A lock entry with no version of its own (e.g. a `path:` dependency) carries
-  # the `ShardLockEntry::UNKNOWN_VERSION` placeholder. Emitting that as
-  # `@unknown` asserts a version that does not exist; the package-url encoding
-  # for "version not known" is to omit the `@version` component entirely.
-  private def build_purl(prefix : String, repo_path : String, version : String, lowercase : Bool) : String
+  # A lock entry with no version of its own (e.g. a `path:` dependency) yields a
+  # nil version. The package-url encoding for "version not known" is to omit the
+  # `@version` component entirely rather than to assert one.
+  private def build_purl(prefix : String, repo_path : String, version : String?, lowercase : Bool) : String
     repo_path = repo_path.downcase if lowercase
     purl = "#{prefix}#{encode_purl_path(repo_path)}"
-    return purl if version.empty? || version == ShardLockEntry::UNKNOWN_VERSION
+    return purl if version.nil? || version.empty?
     "#{purl}@#{encode_purl_segment(version)}"
   end
 

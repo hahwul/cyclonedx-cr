@@ -1,8 +1,15 @@
 name: test-app
 version: 0.1.0
 
+# Declaring a target is what makes this an application rather than a library;
+# `minimal_shard.yml` deliberately has none.
+targets:
+  test-app:
+    main: src/main.cr
+
 authors:
   - Test Author <test@example.com>
+  - Second Author <second@example.com>
 
 license: MIT
 homepage: https://example.com
