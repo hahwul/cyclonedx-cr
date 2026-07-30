@@ -22,6 +22,7 @@ class CycloneDX::BOM
   BOM_FORMAT    = "CycloneDX"
   BOM_VERSION   = 1
   XML_NAMESPACE = "http://cyclonedx.org/schema/bom"
+  JSON_SCHEMA   = "http://cyclonedx.org/schema/bom"
 
   # Specifies the format of the BOM (always "CycloneDX" for JSON serialization).
   @[JSON::Field(key: "bomFormat")]
@@ -35,15 +36,21 @@ class CycloneDX::BOM
   @[JSON::Field(key: "version")]
   getter bom_version : Int32 = BOM_VERSION
 
-  # The unique serial number of the BOM.
+  # The unique serial number of the BOM. Randomly generated unless the caller
+  # supplies one; a caller-supplied value is what makes byte-reproducible output
+  # possible (see the CLI's `--reproducible`).
   @[JSON::Field(key: "serialNumber")]
-  getter serial_number : String = "urn:uuid:#{UUID.random}"
+  getter serial_number : String
 
   # Metadata about the BOM.
   getter metadata : Metadata?
 
   # An array of `CycloneDX::Component` objects included in the BOM.
-  getter components : Array(Component)
+  #
+  # `components` is optional in every CycloneDX version, so it defaults to empty
+  # rather than being required on parse — a BOM that inventories only services,
+  # or that carries nothing but vulnerabilities, legitimately omits it.
+  getter components : Array(Component) = [] of Component
 
   # An array of `CycloneDX::Dependency` objects describing component relationships.
   getter dependencies : Array(Dependency)?
@@ -70,7 +77,14 @@ class CycloneDX::BOM
   # Definitions for standards (1.5+).
   getter definitions : Definitions?
 
-  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6"]
+  SUPPORTED_VERSIONS = ["1.4", "1.5", "1.6", "1.7"]
+
+  # Set while `#raw_json` is collecting the pre-gate document so that
+  # `#to_json(JSON::Builder)` hands straight through to the generated
+  # serializer instead of recursing into the gate. Not serialized, and not safe
+  # to serialize the same BOM instance from two fibers at once.
+  @[JSON::Field(ignore: true)]
+  @ungated = false
 
   # Initializes a new CycloneDX BOM.
   def initialize(@components : Array(Component), @spec_version : String,
@@ -79,10 +93,18 @@ class CycloneDX::BOM
                  @services : Array(Service)? = nil, @compositions : Array(Composition)? = nil,
                  @annotations : Array(Annotation)? = nil, @formulation : Array(Formula)? = nil,
                  @declarations : Declarations? = nil, @external_references : Array(ExternalReference)? = nil,
-                 @definitions : Definitions? = nil)
+                 @definitions : Definitions? = nil, serial_number : String? = nil)
     unless SUPPORTED_VERSIONS.includes?(@spec_version)
       raise ArgumentError.new("Unsupported spec version '#{@spec_version}'. Supported versions are: #{SUPPORTED_VERSIONS.join(", ")}")
     end
+    @serial_number = serial_number || "urn:uuid:#{UUID.random}"
+  end
+
+  # The `$schema` value for the declared spec version. The 1.4 and 1.5 JSON
+  # schemas constrain this key to one exact URL, so it is always derived rather
+  # than caller-supplied. XML carries the same information in `xmlns`.
+  def schema_url : String
+    "#{JSON_SCHEMA}-#{@spec_version}.schema.json"
   end
 
   # Serializes the BOM to JSON.
@@ -90,12 +112,46 @@ class CycloneDX::BOM
   # The object model may carry fields newer than the declared `specVersion`
   # (e.g. a 1.4 BOM that was handed `lifecycles`). To keep the output
   # schema-valid, the raw serialization is filtered through `VersionGate`,
-  # which strips any key newer than `@spec_version`.
-  def to_json : String
-    raw = String.build do |str|
+  # which strips or downgrades anything newer than `@spec_version`.
+  #
+  # This overrides the `JSON::Serializable` implementation rather than wrapping
+  # only the no-arg `to_json`, because every other JSON entry point in stdlib
+  # (`to_pretty_json`, `to_json(IO)`, and serialization as part of a larger
+  # document) funnels through this method. Gating only the no-arg form left all
+  # of those emitting ungated output.
+  def to_json(json : JSON::Builder) : Nil
+    return super(json) if @ungated
+    with_schema_url(VersionGate.filter_json_any(raw_json, @spec_version)).to_json(json)
+  end
+
+  # Prepends the `$schema` key to a filtered document.
+  #
+  # `$schema` is injected here rather than being an instance variable so that
+  # reading a BOM back with `from_json` neither requires the key nor carries a
+  # stale value forward: it is always recomputed from `spec_version`. Building a
+  # fresh hash also puts it first, which is where every CycloneDX example has it.
+  private def with_schema_url(doc : JSON::Any) : JSON::Any
+    obj = doc.as_h?
+    return doc unless obj
+    merged = {"$schema" => JSON::Any.new(schema_url)}
+    obj.each { |key, value| merged[key] = value unless key == "$schema" }
+    JSON::Any.new(merged)
+  end
+
+  # The document as `JSON::Serializable` produces it, *before* spec-version
+  # gating.
+  #
+  # `Validator` diffs this against the gated document to find fields that are
+  # newer than the declared `specVersion`, so the rules for what gets stripped
+  # live only in `VersionGate` and cannot drift out of sync with the validator.
+  # The two documents therefore differ in exactly the places the gate edited.
+  def raw_json : String
+    @ungated = true
+    String.build do |str|
       JSON.build(str) { |json| to_json(json) }
     end
-    VersionGate.filter_json(raw, @spec_version)
+  ensure
+    @ungated = false
   end
 
   # Serializes the BOM to XML format.

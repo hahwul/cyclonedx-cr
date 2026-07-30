@@ -1,5 +1,9 @@
 require "json"
 require "xml"
+# `Pedigree` holds arrays of `Component`, which in turn requires this file.
+# Crystal resolves the cycle by ignoring the second `require`, and this keeps the
+# file usable on its own.
+require "./component"
 
 module CycloneDX
   class Commit
@@ -44,16 +48,36 @@ module CycloneDX
   class Pedigree
     include JSON::Serializable
 
-    getter notes : String?
+    # `ancestors`, `descendants` and `variants` are arrays of full components.
+    # Describing where a component came from is the whole point of pedigree, so
+    # without them the type could not express its own purpose.
+    getter ancestors : Array(Component)?
+    getter descendants : Array(Component)?
+    getter variants : Array(Component)?
     getter commits : Array(Commit)?
     getter patches : Array(Patch)?
+    getter notes : String?
 
     def initialize(@notes : String? = nil, @commits : Array(Commit)? = nil,
-                   @patches : Array(Patch)? = nil)
+                   @patches : Array(Patch)? = nil,
+                   @ancestors : Array(Component)? = nil,
+                   @descendants : Array(Component)? = nil,
+                   @variants : Array(Component)? = nil)
     end
 
     def to_xml(xml : XML::Builder)
+      # Element order follows the pedigreeType XSD <sequence>: ancestors,
+      # descendants, variants, commits, patches, notes.
       xml.element("pedigree") do
+        if ancestors_val = @ancestors
+          xml.element("ancestors") { ancestors_val.each(&.to_xml(xml)) }
+        end
+        if descendants_val = @descendants
+          xml.element("descendants") { descendants_val.each(&.to_xml(xml)) }
+        end
+        if variants_val = @variants
+          xml.element("variants") { variants_val.each(&.to_xml(xml)) }
+        end
         if commits_val = @commits
           xml.element("commits") do
             commits_val.each(&.to_xml(xml))

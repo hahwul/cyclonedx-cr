@@ -1,5 +1,7 @@
 require "spec"
 require "json"
+require "../src/cyclonedx/bom"
+require "./support/schema_validation"
 
 BINARY   = "bin/cyclonedx-cr"
 FIXTURES = "spec/fixtures"
@@ -34,6 +36,14 @@ private def purls_for(lock : String) : Hash(String, String)
     end
   end
   result
+end
+
+# name => component, for the fixture exercising every shards resolver.
+private def all_resolver_components : Hash(String, JSON::Any)
+  output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/all_resolvers_lock.lock 2>/dev/null`
+  components = {} of String => JSON::Any
+  JSON.parse(output)["components"].as_a.each { |c| components[c["name"].as_s] = c }
+  components
 end
 
 describe "App Integration" do
@@ -544,6 +554,135 @@ describe "App Integration" do
       all_refs = component_refs.dup
       bom["metadata"]["component"]["bom-ref"]?.try { |r| all_refs << r.as_s }
       all_refs.size.should eq(all_refs.uniq.size)
+    end
+  end
+
+  describe "shard source coverage" do
+    it "emits a PURL for every forge shorthand, canonicalised" do
+      components = all_resolver_components
+      # github and bitbucket namespaces are case-insensitive and must be folded.
+      components["gh"]["purl"].should eq("pkg:github/kemalcr/kemal@1.4.0")
+      components["bb"]["purl"].should eq("pkg:bitbucket/team/bbrepo@1.2.3")
+    end
+
+    it "uses the locked commit rather than shards' composite version string" do
+      purl = all_resolver_components["gh_commit"]["purl"].as_s
+      purl.should eq("pkg:github/hahwul/spdx.cr@21ac950936830412628cbf631bf48ece6dce9a48")
+      purl.should_not contain("git.commit")
+    end
+
+    it "records a vcs external reference for sources that have no PURL type" do
+      components = all_resolver_components
+
+      {
+        "cb"        => "https://codeberg.org/team/cbrepo",
+        "hgdep"     => "https://hg.example.com/repo",
+        "fossildep" => "https://fossil.example.com/repo",
+      }.each do |name, url|
+        component = components[name]
+        component["purl"]?.should be_nil
+        refs = component["externalReferences"].as_a
+        refs.map(&.["url"].as_s).should contain(url)
+        refs.map(&.["type"].as_s).should contain("vcs")
+      end
+    end
+
+    it "omits the version entirely for a dependency that has none" do
+      component = all_resolver_components["localdep"]
+      component["version"]?.should be_nil
+      component["bom-ref"].should eq("localdep")
+      # A `path:` dependency has no remote to point at.
+      component["externalReferences"]?.should be_nil
+    end
+  end
+
+  describe "BOM-level assertions" do
+    it "types the root component from the presence of build targets" do
+      with_targets = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`
+      JSON.parse(with_targets)["metadata"]["component"]["type"].should eq("application")
+
+      without_targets = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/empty_lock.lock 2>/dev/null`
+      JSON.parse(without_targets)["metadata"]["component"]["type"].should eq("library")
+    end
+
+    it "declares the dependency graph incomplete" do
+      bom = JSON.parse(`#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`)
+      composition = bom["compositions"].as_a.first
+      composition["aggregate"].should eq("incomplete")
+      # Every ref in the graph is covered by the assertion.
+      graph_refs = bom["dependencies"].as_a.map(&.["ref"].as_s)
+      composition["dependencies"].as_a.map(&.as_s).sort!.should eq(graph_refs.sort)
+    end
+
+    it "emits all shard.yml authors as structured contacts" do
+      bom = JSON.parse(`#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`)
+      authors = bom["metadata"]["component"]["authors"].as_a
+      authors.map(&.["name"].as_s).should eq(["Test Author", "Second Author"])
+      authors.map(&.["email"].as_s).should eq(["test@example.com", "second@example.com"])
+    end
+
+    it "omits the 1.6-only authors array for older spec versions" do
+      %w[1.4 1.5].each do |version|
+        output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --spec-version #{version} 2>&1`
+        # No gate warning either: the CLI never populates it below 1.6.
+        output.should_not contain("Warning")
+        component = JSON.parse(output)["metadata"]["component"]
+        component["authors"]?.should be_nil
+        component["author"].should eq("Test Author <test@example.com>")
+      end
+    end
+
+    it "emits a $schema matching the requested spec version" do
+      CycloneDX::BOM::SUPPORTED_VERSIONS.each do |version|
+        output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --spec-version #{version} 2>/dev/null`
+        JSON.parse(output)["$schema"]
+          .should eq("http://cyclonedx.org/schema/bom-#{version}.schema.json")
+      end
+    end
+  end
+
+  describe "--reproducible" do
+    it "produces byte-identical output across runs" do
+      first = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --reproducible 2>/dev/null`
+      second = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --reproducible 2>/dev/null`
+      first.should eq(second)
+
+      bom = JSON.parse(first)
+      bom["serialNumber"].should eq("urn:uuid:00000000-0000-0000-0000-000000000000")
+      bom["metadata"]["timestamp"].should eq("1970-01-01T00:00:00Z")
+    end
+
+    it "varies the serial number when not requested" do
+      first = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`
+      second = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`
+      JSON.parse(first)["serialNumber"].should_not eq(JSON.parse(second)["serialNumber"])
+    end
+  end
+
+  # The library specs validate hand-built BOMs; this checks what the binary
+  # actually writes, for every spec version and both serializations.
+  describe "generated documents validate against the official schemas" do
+    SchemaValidation::VERSIONS.each do |version|
+      it "emits schema-valid JSON and XML (spec #{version})" do
+        args = "-s #{FIXTURES}/shard.yml -i #{FIXTURES}/all_resolvers_lock.lock " \
+               "--spec-version #{version} --reproducible"
+
+        if SchemaValidation::JSON_VALIDATOR
+          json = `#{BINARY} #{args} 2>/dev/null`
+          ok, err = SchemaValidation.json_schema_validate(json, version)
+          fail("bom-#{version}.schema.json validation failed:\n#{err}") unless ok
+        end
+
+        if SchemaValidation::XMLLINT
+          xml = `#{BINARY} #{args} --output-format xml 2>/dev/null`
+          ok, err = SchemaValidation.xsd_validate(xml, version)
+          fail("bom-#{version}.xsd validation failed:\n#{err}") unless ok
+        end
+
+        if SchemaValidation::XMLLINT.nil? && SchemaValidation::JSON_VALIDATOR.nil?
+          pending!("neither xmllint nor check-jsonschema is installed")
+        end
+      end
     end
   end
 end

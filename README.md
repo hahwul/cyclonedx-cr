@@ -6,8 +6,12 @@ A Crystal tool for generating [CycloneDX](https://cyclonedx.org/) Software Bill 
 
 - Generates CycloneDX SBOMs from Crystal `shard.yml` and `shard.lock` files
 - Supports multiple output formats: JSON, XML, CSV
-- Compatible with CycloneDX spec versions 1.4, 1.5, and 1.6
-- Automatically generates canonical, percent-encoded Package URLs (PURLs) for GitHub, GitLab, and Bitbucket dependencies
+- Compatible with CycloneDX spec versions 1.4, 1.5, 1.6 and 1.7, validated against the official XSD *and* JSON schemas
+- Emits output valid for the version you ask for: fields and enum values newer than the declared `specVersion` are stripped or downgraded, and the losses are reported
+- Automatically generates canonical, percent-encoded Package URLs (PURLs) for GitHub, GitLab and Bitbucket dependencies, using the locked commit when it is not a released tag
+- Records a `vcs` external reference for every dependency, including `codeberg:`, `hg:` and `fossil:` sources that have no PURL type
+- Declares the dependency graph `incomplete`, since `shard.lock` cannot express transitive edges
+- Reproducible output on request, for SBOMs that get committed, signed or diffed
 - Docker support for containerized usage
 - Fast and lightweight implementation in Crystal
 
@@ -76,9 +80,22 @@ Usage: cyclonedx-cr [arguments]
     -i FILE, --input=FILE            shard.lock file path (default: shard.lock)
     -s FILE, --shard=FILE            shard.yml file path (default: shard.yml)
     -o FILE, --output=FILE           Output file path (default: stdout)
-    --spec-version VERSION           CycloneDX spec version (options: 1.4, 1.5, 1.6, default: 1.6)
+    --spec-version VERSION           CycloneDX spec version (options: 1.4, 1.5, 1.6, 1.7, default: 1.6)
     --output-format FORMAT           Output format (options: json, xml, csv, default: json)
+    --reproducible                   Pin the timestamp and serial number so repeated runs over unchanged inputs produce identical output
     -h, --help                       Show this help
+```
+
+### Reproducible output
+
+By default every run gets a fresh `serialNumber` and the current time as its
+`metadata.timestamp`, so two SBOMs for the same project never compare equal.
+`--reproducible` pins both — the timestamp to the Unix epoch and the serial
+number to the nil UUID — which is what you want when the SBOM is committed to the
+repository, signed, or diffed between builds:
+
+```bash
+cyclonedx-cr --reproducible -o sbom.json
 ```
 
 ### Examples
@@ -172,9 +189,35 @@ formulas.
 
 ## CycloneDX Specification Versions
 
-- **1.6** (default): Latest stable version with broad compatibility
+- **1.7**: Newest published version (ECMA-424, 2nd edition)
+- **1.6** (default): Widely supported; the safe choice for most tooling
 - **1.5**: Stable version with broad tool compatibility
 - **1.4**: Legacy version for compatibility with older tools
+
+The default stays at 1.6 because tool support for it is the most universal.
+
+CycloneDX added both fields *and* enum values over these versions, so asking for
+an older `--spec-version` is a real downgrade rather than a relabelling. Anything
+the requested version cannot express is handled before the document is written:
+
+| Situation | What happens |
+| --- | --- |
+| A field newer than the declared version | stripped |
+| An enum value newer than the declared version, where the enum has a catch-all | rewritten to that catch-all (`other`, `not_specified`) |
+| An enum value newer than the declared version with no catch-all (`component/@type`) | reported as an error; nothing is written |
+| A repeated element the older schema allows only once | collapsed to the first |
+
+Whatever gets dropped or rewritten is reported on stderr, so a downgrade is never
+silent. Every combination is checked against the official schemas in the test
+suite (`spec/cyclonedx/schema_validation_spec.cr`).
+
+## Dependency graph completeness
+
+`shard.lock` records *which* shards are installed but not which shard required
+which, so only the root component's direct edges are known. The BOM therefore
+declares a `compositions` entry with `aggregate: "incomplete"` over the graph —
+without it, a consumer could not tell an unknown graph apart from a genuinely
+flat one.
 
 ## Contributing
 

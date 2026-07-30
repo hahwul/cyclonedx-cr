@@ -44,7 +44,7 @@ describe ShardFile do
       shard.repository.should be_nil
     end
 
-    it "parses a shard.yml without a version (defaults to 'unknown')" do
+    it "leaves the version nil when shard.yml omits it" do
       yaml = <<-YAML
         name: app-only
         YAML
@@ -52,7 +52,22 @@ describe ShardFile do
       shard = ShardFile.from_yaml(yaml)
 
       shard.name.should eq "app-only"
-      shard.version.should eq "unknown"
+      shard.version.should be_nil
+    end
+
+    it "reports whether the shard declares build targets" do
+      library = ShardFile.from_yaml(<<-YAML)
+        name: libfoo
+        YAML
+      library.targets?.should be_false
+
+      application = ShardFile.from_yaml(<<-YAML)
+        name: appfoo
+        targets:
+          appfoo:
+            main: src/main.cr
+        YAML
+      application.targets?.should be_true
     end
 
     it "raises an error when the required name field is missing" do

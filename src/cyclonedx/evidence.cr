@@ -89,6 +89,7 @@ module CycloneDX
     # `identity` (XSD componentEvidenceType: identity, occurrences, callstack,
     # licenses, copyright).
     getter occurrences : Array(EvidenceOccurrence)?
+    @[JSON::Field(converter: CycloneDX::LicenseChoiceConverter)]
     getter licenses : Array(License | LicenseExpression)?
     getter copyright : Array(EvidenceCopyright)?
 

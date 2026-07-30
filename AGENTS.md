@@ -8,7 +8,7 @@ This file contains instructions for AI agents working on the `cyclonedx-cr` proj
 
 - **Language:** Crystal
 - **Build System:** Shards
-- **Spec Versions:** CycloneDX 1.4, 1.5, 1.6
+- **Spec Versions:** CycloneDX 1.4, 1.5, 1.6, 1.7 (1.6 is the default)
 - **Output Formats:** JSON, XML, CSV
 
 ## Directory Structure
@@ -50,6 +50,40 @@ To run the test suite:
 crystal spec
 ```
 All new features or bug fixes must include corresponding specs.
+
+#### Schema-validation specs
+
+Generated documents are validated against the official CycloneDX schemas
+vendored in `spec/schemas/` — the XSDs via `xmllint` and the JSON schemas via
+`check-jsonschema`. Both tools are **optional**: examples needing a missing one
+are marked pending, so an incomplete local setup looks like a passing run.
+
+```bash
+# macOS: xmllint ships with the OS; install the JSON validator with
+uv tool install check-jsonschema   # or: pipx install check-jsonschema
+```
+
+A full run takes roughly 8 seconds. A sub-second run means the schema examples
+were skipped, so **never conclude that a serialization or version-gating change
+is correct from a fast suite**.
+
+### Spec-version gating
+
+`src/cyclonedx/version_gate.cr` is the single source of truth for what each
+CycloneDX version permits, covering fields, enum values and repeated-element
+shapes. Two invariants it relies on:
+
+- `BOM#to_json(JSON::Builder)` is the only JSON entry point, and it reaches the
+  generated serializer with `super`. `super` works only inside the overriding
+  method, so this cannot be refactored into a helper.
+- `Validator` does not re-derive the gating rules; `VersionGate.violations` runs
+  the filter and reports what it changed. Add a gated field to the tables and it
+  is reported automatically — do not write a parallel traversal.
+
+Repairable downgrades are `Validator#warnings` (the output is still valid); only
+what the gate cannot repair is an error. Enum tables are cross-checked against
+the XSDs by `spec/cyclonedx/enum_consistency_spec.cr`, so derive enum edits from
+the schemas rather than editing the lists by hand.
 
 ### Running
 

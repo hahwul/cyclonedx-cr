@@ -26,7 +26,11 @@ class CycloneDX::Component
   getter mime_type : String?
   getter group : String?
   getter name : String
-  getter version : String
+  # Optional in every CycloneDX version (1.4 onwards). `nil` means "not known",
+  # which is what the schema expresses by omitting the field; it must never be
+  # stood in for with a placeholder string like "unknown", since that asserts a
+  # version that does not exist and defeats downstream version matching.
+  getter version : String?
   getter scope : String?
   getter purl : String?
   getter cpe : String?
@@ -36,6 +40,7 @@ class CycloneDX::Component
   getter copyright : String?
   getter supplier : OrganizationalEntity?
   getter manufacturer : OrganizationalEntity?
+  @[JSON::Field(converter: CycloneDX::LicenseChoiceConverter)]
   getter licenses : Array(License | LicenseExpression)?
   getter hashes : Array(Hash)?
   @[JSON::Field(key: "externalReferences")]
@@ -58,7 +63,7 @@ class CycloneDX::Component
   @[JSON::Field(key: "cryptoProperties")]
   getter crypto_properties : CryptoProperties?
 
-  def initialize(@name : String, @version : String, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
+  def initialize(@name : String, @version : String? = nil, @component_type : String = DEFAULT_TYPE, @purl : String? = nil,
                  @description : String? = nil, @author : String? = nil,
                  @licenses : Array(License | LicenseExpression)? = nil,
                  @external_references : Array(ExternalReference)? = nil, @bom_ref : String? = nil,
@@ -107,7 +112,9 @@ class CycloneDX::Component
         xml.element("group") { xml.text(group) }
       end
       xml.element("name") { xml.text(@name) }
-      xml.element("version") { xml.text(@version) }
+      if version = @version
+        xml.element("version") { xml.text(version) }
+      end
       if description = @description
         xml.element("description") { xml.text(description) }
       end

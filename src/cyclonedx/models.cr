@@ -126,14 +126,56 @@ module CycloneDX
     end
   end
 
+  # Serializes and deserializes a CycloneDX `licenses` array, whose entries are
+  # either a `{"license": {...}}` wrapper or a bare `{"expression": "..."}`
+  # object (the schema's `licenseChoice`).
+  #
+  # A plain `Array(License | LicenseExpression)` cannot round-trip this. Union
+  # deserialization tries `License` first, and since a wrapper's only key is
+  # `license` — which `License` does not declare — every wrapped license parsed
+  # into an all-nil `License` *without raising*, then re-serialized as
+  # `{"license":{}}`, which no CycloneDX schema accepts. The data loss was
+  # silent, so this converter handles the wrapper explicitly.
+  module LicenseChoiceConverter
+    def self.from_json(pull : JSON::PullParser) : Array(License | LicenseExpression)
+      entries = [] of License | LicenseExpression
+      pull.read_array do
+        line, column = pull.line_number, pull.column_number
+        entry = JSON::Any.new(pull)
+        if wrapped = entry["license"]?
+          entries << License.from_json(wrapped.to_json)
+        elsif entry["expression"]?
+          entries << LicenseExpression.from_json(entry.to_json)
+        else
+          # `licenseChoice` has had exactly these two forms in every spec
+          # version, so anything else is malformed rather than merely newer.
+          raise JSON::ParseException.new(
+            "expected a licenses entry to be {\"license\": ...} or " \
+            "{\"expression\": ...}, got #{entry.to_json}", line, column)
+        end
+      end
+      entries
+    end
+
+    def self.to_json(value : Array(License | LicenseExpression), json : JSON::Builder) : Nil
+      json.array { value.each(&.to_json(json)) }
+    end
+  end
+
   class Hash
     include JSON::Serializable
 
-    # Valid hash algorithm enum values per the CycloneDX schema (`hash-alg`).
+    # Valid hash algorithm enum values per the CycloneDX schema (`hashAlg`).
+    #
+    # This is the union across all supported spec versions. Values newer than a
+    # BOM's declared `specVersion` are gated on serialization; see
+    # `VersionGate::HASH_ALG_VERSIONS`.
     VALID_ALGORITHMS = [
       "MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512",
       "SHA3-256", "SHA3-384", "SHA3-512",
       "BLAKE2b-256", "BLAKE2b-384", "BLAKE2b-512", "BLAKE3",
+      # 1.7+
+      "Streebog-256", "Streebog-512",
     ]
 
     @[JSON::Field(key: "alg")]
@@ -157,19 +199,26 @@ module CycloneDX
     include JSON::Serializable
 
     # Valid externalReference type enum values per the CycloneDX schema
-    # (`externalReferenceType`). "other" is the catch-all fallback.
+    # (`externalReferenceType`). "other" is the catch-all fallback, which the
+    # version gate downgrades too-new types to.
+    #
+    # This is the union across all supported spec versions; see
+    # `VersionGate::EXTERNAL_REFERENCE_TYPE_VERSIONS` for when each was added.
     VALID_TYPES = [
       "vcs", "issue-tracker", "website", "advisories", "bom", "mailing-list",
       "social", "chat", "documentation", "support", "source-distribution",
       "distribution", "distribution-intake", "license", "build-meta",
       "build-system", "release-notes", "security-contact", "model-card",
       "log", "configuration", "evidence", "formulation", "attestation",
-      "threat-model", "adversary-model", "risk-register",
+      "threat-model", "adversary-model", "risk-assessment",
       "vulnerability-assertion", "exploitability-statement", "pentest-report",
       "static-analysis-report", "dynamic-analysis-report",
       "runtime-analysis-report", "component-analysis-report", "maturity-report",
       "certification-report", "codified-infrastructure", "quality-metrics",
-      "poam", "electronic-signature", "digital-signature", "rfc-9116", "other",
+      "poam", "electronic-signature", "digital-signature", "rfc-9116",
+      # 1.7+
+      "patent", "patent-family", "patent-assertion", "citation",
+      "other",
     ]
 
     @[JSON::Field(key: "type")]

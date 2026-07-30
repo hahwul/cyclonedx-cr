@@ -6,10 +6,11 @@ require "../../src/cyclonedx/annotation"
 require "../../src/cyclonedx/declaration"
 
 # Normalises a serialized BOM so two outputs can be compared on their *core*
-# structure only (the per-version `specVersion` and the random `serialNumber`
-# are masked out).
+# structure only (the per-version `specVersion`/`$schema` and the random
+# `serialNumber` are masked out).
 private def normalize_core(json : String) : String
   json
+    .gsub(/"\$schema":"[^"]+"/, %("$schema":"X"))
     .gsub(/"specVersion":"[^"]+"/, %("specVersion":"X"))
     .gsub(/"serialNumber":"[^"]+"/, %("serialNumber":"X"))
 end
@@ -192,8 +193,11 @@ describe CycloneDX::VersionGate do
     end
   end
 
+  # A field the gate can strip leaves the output schema-valid, so it is reported
+  # as a warning rather than an error: the BOM is over-specified for the declared
+  # version, not invalid. Only what the gate cannot repair fails `validate`.
   describe "(d) validator flags a 1.6 field set under specVersion 1.4" do
-    it "reports gating errors for component and bom-level 1.6 fields" do
+    it "reports gating warnings for component and bom-level 1.6 fields" do
       comp = CycloneDX::Component.new(
         name: "lib", version: "1.0.0",
         tags: ["a"],
@@ -204,14 +208,15 @@ describe CycloneDX::VersionGate do
       bom = CycloneDX::BOM.new([comp], "1.4", definitions: defs)
 
       validator = CycloneDX::Validator.new
-      validator.validate(bom).should be_false
+      # All four are strippable, so the document stays valid.
+      validator.validate(bom).should be_true
 
-      messages = validator.errors.map(&.message)
-      validator.errors.any? { |e| e.path == "$.components[0].tags" }.should be_true
-      validator.errors.any? { |e| e.path == "$.components[0].cryptoProperties" }.should be_true
-      validator.errors.any? { |e| e.path == "$.components[0].authors" }.should be_true
-      validator.errors.any? { |e| e.path == "$.definitions" }.should be_true
-      messages.all?(&.includes?("specVersion")).should be_true
+      warnings = validator.warnings
+      warnings.any? { |e| e.path == "$.components[0].tags" }.should be_true
+      warnings.any? { |e| e.path == "$.components[0].cryptoProperties" }.should be_true
+      warnings.any? { |e| e.path == "$.components[0].authors" }.should be_true
+      warnings.any? { |e| e.path == "$.definitions" }.should be_true
+      warnings.map(&.message).all?(&.includes?("specVersion")).should be_true
     end
 
     it "reports a 1.5 field (lifecycles/annotations) under 1.4" do
@@ -221,9 +226,38 @@ describe CycloneDX::VersionGate do
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.4", metadata: md, annotations: [ann])
 
       validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+      validator.warnings.any? { |e| e.path == "$.metadata.lifecycles" }.should be_true
+      validator.warnings.any? { |e| e.path == "$.annotations" }.should be_true
+    end
+
+    # An enum value with no catch-all cannot be repaired, so it is a real error:
+    # the emitted document would fail validation.
+    it "errors on a component type that has no older equivalent" do
+      comp = CycloneDX::Component.new(
+        name: "key", version: "1.0", component_type: "cryptographic-asset")
+      bom = CycloneDX::BOM.new([comp], "1.4")
+
+      validator = CycloneDX::Validator.new
       validator.validate(bom).should be_false
-      validator.errors.any? { |e| e.path == "$.metadata.lifecycles" }.should be_true
-      validator.errors.any? { |e| e.path == "$.annotations" }.should be_true
+      error = validator.errors.find!(&.path.== "$.components[0].type")
+      error.message.should contain("cryptographic-asset")
+      error.message.should contain("no older equivalent")
+    end
+
+    it "downgrades an enum value that does have a catch-all, and warns" do
+      comp = CycloneDX::Component.new(name: "lib", version: "1.0",
+        external_references: [CycloneDX::ExternalReference.new(
+          ref_type: "rfc-9116", url: "https://x.example/.well-known/security.txt")])
+      bom = CycloneDX::BOM.new([comp], "1.4")
+
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_true
+      validator.warnings.any?(&.message.includes?("emitted as 'other'")).should be_true
+
+      json = bom.to_json
+      json.should contain(%("type":"other"))
+      json.should_not contain("rfc-9116")
     end
 
     it "does NOT flag those fields when the declared version supports them" do
@@ -269,9 +303,9 @@ describe CycloneDX::VersionGate do
 
     it "reports validator violations that the filters actually strip (consistency)" do
       validator = CycloneDX::Validator.new
-      validator.validate(expr_bom("1.4")).should be_false
-      validator.errors.any?(&.path.includes?("bom-ref")).should be_true
-      validator.errors.any?(&.path.includes?("acknowledgement")).should be_true
+      validator.validate(expr_bom("1.4")).should be_true
+      validator.warnings.any?(&.path.includes?("bom-ref")).should be_true
+      validator.warnings.any?(&.path.includes?("acknowledgement")).should be_true
     end
   end
 
