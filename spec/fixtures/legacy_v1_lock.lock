@@ -1,0 +1,11 @@
+version: 1.0
+shards:
+  pinned:
+    github: crystal-ameba/ameba
+    commit: 0f4b2d5a1c9e7f3b8a6d4c2e0f1a3b5c7d9e1f20
+  tagged:
+    github: kemalcr/kemal
+    tag: v1.4.0
+  tracked:
+    git: https://github.com/owner/tracked.git
+    branch: main

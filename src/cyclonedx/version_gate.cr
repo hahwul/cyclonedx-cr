@@ -229,12 +229,35 @@ module CycloneDX
       "Streebog-512" => "1.7",
     }
 
+    # `scoreSourceType` (vulnerability/ratings/rating/method).
+    SCORE_METHOD_VERSIONS = {
+      "CVSSv4" => "1.5",
+      "SSVC"   => "1.5",
+    }
+
+    # `identityFieldType` (component/evidence/identity/field). The enum did not
+    # exist before 1.5, so every value is listed; `evidence.identity` is itself
+    # gated to 1.5+, which is what keeps a 1.4 document from ever seeing one.
+    IDENTITY_FIELD_VERSIONS = {
+      "group"     => "1.5",
+      "name"      => "1.5",
+      "version"   => "1.5",
+      "purl"      => "1.5",
+      "cpe"       => "1.5",
+      "swid"      => "1.5",
+      "hash"      => "1.5",
+      "omniborId" => "1.6",
+      "swhid"     => "1.6",
+    }
+
     # Context => { json_key => value-version table }.
     GATED_ENUMS = {
       component:          {"type" => COMPONENT_TYPE_VERSIONS},
       external_reference: {"type" => EXTERNAL_REFERENCE_TYPE_VERSIONS},
       composition:        {"aggregate" => AGGREGATE_VERSIONS},
       hash:               {"alg" => HASH_ALG_VERSIONS},
+      rating:             {"method" => SCORE_METHOD_VERSIONS},
+      evidence_identity:  {"field" => IDENTITY_FIELD_VERSIONS},
     }
 
     # The catch-all each enum designates for "a type this document cannot
@@ -243,6 +266,7 @@ module CycloneDX
     ENUM_FALLBACK = {
       external_reference: {"type" => "other"},
       composition:        {"aggregate" => "not_specified"},
+      rating:             {"method" => "other"},
     }
 
     # ---- JSON filtering --------------------------------------------------
@@ -279,11 +303,13 @@ module CycloneDX
       {:pedigree, "variants"}    => :component,
 
       {:evidence, "licenses"} => :licenses_array,
+      {:evidence, "identity"} => :evidence_identity,
 
       {:service, "services"} => :service,
       {:service, "licenses"} => :licenses_array,
 
       {:vulnerability, "analysis"} => :vulnerability_analysis,
+      {:vulnerability, "ratings"}  => :rating,
 
       {:licenses_array, "license"} => :license,
     }
@@ -296,8 +322,9 @@ module CycloneDX
     # Almost everything is repairable — a too-new field is stripped, a too-new
     # enum value is swapped for its catch-all — and those are a lossy downgrade,
     # not an invalid document. The exception is an enum with no catch-all
-    # (`component/@type`), where the value has to stay and the output really is
-    # invalid. `Validator` reports the two differently for that reason.
+    # (`component/@type`, `evidence/identity/field`), where the value has to stay
+    # and the output really is invalid. `Validator` reports the two differently
+    # for that reason.
     record Violation,
       path : String,
       field : String,
@@ -504,11 +531,21 @@ module CycloneDX
     }
 
     # Elements whose *text content* is an enum value, with their catch-all.
+    #
+    # `<method>` is also the name of an evidence-identity method *wrapper*
+    # element, whose content is the concatenation of its children rather than an
+    # enum value; that never matches an entry in `SCORE_METHOD_VERSIONS`, so
+    # matching by element name alone is safe here.
     XML_ENUM_TEXT = {
       "aggregate" => AGGREGATE_VERSIONS,
+      "method"    => SCORE_METHOD_VERSIONS,
+      "field"     => IDENTITY_FIELD_VERSIONS,
     }
+    # `field` is absent: `identityFieldType` designates no catch-all, so a
+    # too-new value is left in place and reported by `Validator` instead.
     XML_ENUM_TEXT_FALLBACK = {
       "aggregate" => "not_specified",
+      "method"    => "other",
     }
 
     # Returns a copy of `xml` with elements, attributes and enum values newer

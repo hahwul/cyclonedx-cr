@@ -36,6 +36,15 @@ module CycloneDX
       @warnings = [] of ValidationError
     end
 
+    # `bom.serialNumber`. Both schema families constrain it to the same shape —
+    # the JSON schemas with this exact regex and the XSDs with the `urnUuid`
+    # pattern — so a prefix check is not enough: `urn:uuid:not-a-uuid` and an
+    # upper-case UUID both pass "starts with 'urn:uuid:'" and are both rejected
+    # by every official schema. Lower case is deliberate; the pattern is
+    # `[0-9a-f]`, not `[0-9a-fA-F]`.
+    SERIAL_NUMBER_PATTERN =
+      /\Aurn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+
     def validate(bom : BOM) : Bool
       @errors.clear
       @warnings.clear
@@ -46,7 +55,9 @@ module CycloneDX
     private def validate_bom(bom : BOM)
       add_error("$.bomFormat", "must be 'CycloneDX'") unless bom.bom_format == "CycloneDX"
       add_error("$.specVersion", "must be a supported version") unless BOM::SUPPORTED_VERSIONS.includes?(bom.spec_version)
-      add_error("$.serialNumber", "must start with 'urn:uuid:'") unless bom.serial_number.starts_with?("urn:uuid:")
+      unless bom.serial_number.matches?(SERIAL_NUMBER_PATTERN)
+        add_error("$.serialNumber", "'#{bom.serial_number}' is not a 'urn:uuid:' RFC 4122 URN")
+      end
 
       bom.components.each_with_index do |comp, i|
         validate_component(comp, "$.components[#{i}]")
@@ -148,6 +159,8 @@ module CycloneDX
             # `dependencies` is a reference list inside a composition but the
             # dependency graph itself at the document root, so keep descending.
           end
+          validate_licenses_array(value, child_path) if key == "licenses"
+          validate_lifecycles(value, child_path) if key == "lifecycles"
           collect_document(value, child_path, defined, references)
         end
       elsif arr = node.as_a?
@@ -176,6 +189,42 @@ module CycloneDX
       return unless license
       return if license.has_key?("id") || license.has_key?("name")
       add_error("#{path}.license", "must have either an 'id' or a 'name'")
+    end
+
+    # A `licenses` array is a `oneOf` in the schema: either a list of
+    # `{"license": …}` entries, or a list holding a *single* `{"expression": …}`
+    # (`maxItems: 1`). The XSD says the same with an `xs:choice` between
+    # `<license>` elements and one `<expression>`. The object model stores both
+    # kinds in one `Array(License | LicenseExpression)`, so a caller can build a
+    # mixed array, or several expressions, which every official schema rejects.
+    private def validate_licenses_array(node : JSON::Any, path : String)
+      entries = node.as_a?
+      return unless entries
+      expressions = entries.count { |entry| entry.as_h?.try(&.has_key?("expression")) }
+      return if expressions.zero?
+
+      if expressions < entries.size
+        add_error(path, "must not mix a license expression with named licenses; " \
+                        "the schema permits either one expression or a list of licenses")
+      elsif expressions > 1
+        add_error(path, "must not carry more than one license expression")
+      end
+    end
+
+    # A `metadata.lifecycles` entry is a `oneOf` too: either a predefined
+    # `phase`, or a custom `name` (with an optional `description`) — never both.
+    # The XSD models it as an `xs:choice`, and the JSON schema forbids the other
+    # branch's keys outright via `additionalProperties: false`.
+    private def validate_lifecycles(node : JSON::Any, path : String)
+      entries = node.as_a?
+      return unless entries
+      entries.each_with_index do |entry, i|
+        obj = entry.as_h?
+        next unless obj
+        next unless obj.has_key?("phase")
+        next unless obj.has_key?("name") || obj.has_key?("description")
+        add_error("#{path}[#{i}]", "must have either a 'phase' or a 'name', not both")
+      end
     end
 
     # Flags anything populated on the object model that is newer than the
@@ -240,9 +289,39 @@ module CycloneDX
         end
       end
 
+      if evidence = comp.evidence
+        validate_evidence(evidence, "#{path}.evidence")
+      end
+
       if sub = comp.components
         sub.each_with_index do |c, i|
           validate_component(c, "#{path}.components[#{i}]")
+        end
+      end
+    end
+
+    # `evidence.identity` carries two enums the object model types as plain
+    # strings: `field` (`identityFieldType`) and each method's `technique`
+    # (`evidenceTechnique`).
+    private def validate_evidence(evidence : Evidence, path : String)
+      identities = evidence.identity
+      return unless identities
+
+      identities.each_with_index do |identity, i|
+        identity_path = "#{path}.identity[#{i}]"
+        if field = identity.field
+          unless EvidenceIdentity::VALID_FIELDS.includes?(field)
+            add_error("#{identity_path}.field",
+              "invalid identity field '#{field}', valid: #{EvidenceIdentity::VALID_FIELDS.join(", ")}")
+          end
+        end
+
+        next unless methods = identity.methods
+        methods.each_with_index do |method, j|
+          unless EvidenceMethod::VALID_TECHNIQUES.includes?(method.technique)
+            add_error("#{identity_path}.methods[#{j}].technique",
+              "invalid technique '#{method.technique}', valid: #{EvidenceMethod::VALID_TECHNIQUES.join(", ")}")
+          end
         end
       end
     end
@@ -336,6 +415,16 @@ module CycloneDX
           if score = rating.score
             unless score >= 0.0 && score <= 10.0
               add_error("#{path}.ratings[#{i}].score", "must be between 0.0 and 10.0")
+            end
+          end
+          if severity = rating.severity
+            unless VulnerabilityRating::VALID_SEVERITIES.includes?(severity)
+              add_error("#{path}.ratings[#{i}].severity", "invalid severity '#{severity}'")
+            end
+          end
+          if scoring_method = rating.method
+            unless VulnerabilityRating::VALID_METHODS.includes?(scoring_method)
+              add_error("#{path}.ratings[#{i}].method", "invalid scoring method '#{scoring_method}'")
             end
           end
         end

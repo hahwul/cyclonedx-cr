@@ -276,6 +276,124 @@ describe CycloneDX::Validator do
       validator.validate(bom).should be_true
     end
 
+    it "rejects a serial number that is not a urn:uuid URN" do
+      # Every official schema constrains `serialNumber` to the full RFC 4122
+      # URN, so a `urn:uuid:` prefix alone is not enough.
+      ["urn:uuid:test", "urn:uuid:not-a-uuid", "12345678-1234-1234-1234-123456789abc"].each do |serial|
+        bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", serial_number: serial)
+        validator = CycloneDX::Validator.new
+        validator.validate(bom).should be_false
+        validator.errors.any?(&.path.== "$.serialNumber").should be_true
+      end
+    end
+
+    it "rejects an upper-case serial number" do
+      # The schema pattern is `[0-9a-f]`, not `[0-9a-fA-F]`.
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6",
+        serial_number: "urn:uuid:0F0F0F0F-0F0F-0F0F-0F0F-0F0F0F0F0F0F")
+      CycloneDX::Validator.new.validate(bom).should be_false
+    end
+
+    it "accepts a well-formed serial number, including the generated one" do
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6",
+        serial_number: "urn:uuid:00000000-0000-0000-0000-000000000000")
+      CycloneDX::Validator.new.validate(bom).should be_true
+      CycloneDX::Validator.new
+        .validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")).should be_true
+    end
+
+    it "detects a licenses array mixing an expression with a named license" do
+      # `licenses` is a oneOf: either license entries or a single expression.
+      licenses = [
+        CycloneDX::License.new(id: "MIT"),
+        CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0"),
+      ] of CycloneDX::License | CycloneDX::LicenseExpression
+      comp = CycloneDX::Component.new(name: "a", version: "1", licenses: licenses)
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([comp], "1.6")).should be_false
+      validator.errors.any?(&.message.includes?("must not mix")).should be_true
+    end
+
+    it "detects more than one license expression in a licenses array" do
+      licenses = [
+        CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0"),
+        CycloneDX::LicenseExpression.new(expression: "BSD-3-Clause"),
+      ] of CycloneDX::License | CycloneDX::LicenseExpression
+      comp = CycloneDX::Component.new(name: "a", version: "1", licenses: licenses)
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([comp], "1.6")).should be_false
+      validator.errors.any?(&.message.includes?("more than one license expression")).should be_true
+    end
+
+    it "accepts several named licenses, and a lone expression" do
+      several = [
+        CycloneDX::License.new(id: "MIT"), CycloneDX::License.new(id: "Apache-2.0"),
+      ] of CycloneDX::License | CycloneDX::LicenseExpression
+      lone = [
+        CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0"),
+      ] of CycloneDX::License | CycloneDX::LicenseExpression
+
+      [several, lone].each do |licenses|
+        comp = CycloneDX::Component.new(name: "a", version: "1", licenses: licenses)
+        CycloneDX::Validator.new.validate(CycloneDX::BOM.new([comp], "1.6")).should be_true
+      end
+    end
+
+    it "detects a lifecycle carrying both a phase and a name" do
+      # lifecycleType is an xs:choice / oneOf: a predefined phase OR a custom
+      # name, never both.
+      lc = CycloneDX::Lifecycle.new(phase: "build", name: "custom", description: "d")
+      md = CycloneDX::Metadata.new(lifecycles: [lc])
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: md)).should be_false
+      validator.errors.any?(&.message.includes?("not both")).should be_true
+    end
+
+    it "accepts a lifecycle with only a phase, or only a name" do
+      [CycloneDX::Lifecycle.new(phase: "build"),
+       CycloneDX::Lifecycle.new(name: "custom", description: "d")].each do |lc|
+        md = CycloneDX::Metadata.new(lifecycles: [lc])
+        CycloneDX::Validator.new
+          .validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: md)).should be_true
+      end
+    end
+
+    it "detects an invalid rating severity and scoring method" do
+      rating = CycloneDX::VulnerabilityRating.new(severity: "SEVERE", method: "bogus-method")
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", ratings: [rating])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.any?(&.path.ends_with?("severity")).should be_true
+      validator.errors.any?(&.path.ends_with?("method")).should be_true
+    end
+
+    it "passes a valid rating severity and scoring method" do
+      rating = CycloneDX::VulnerabilityRating.new(score: 7.5, severity: "high", method: "CVSSv4")
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", ratings: [rating])
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
+      CycloneDX::Validator.new.validate(bom).should be_true
+    end
+
+    it "detects an invalid evidence identity field and technique" do
+      identity = CycloneDX::EvidenceIdentity.new(field: "not-a-field",
+        methods: [CycloneDX::EvidenceMethod.new(technique: "guesswork")])
+      comp = CycloneDX::Component.new(name: "a", version: "1",
+        evidence: CycloneDX::Evidence.new(identity: [identity]))
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([comp], "1.6")).should be_false
+      validator.errors.any?(&.path.== "$.components[0].evidence.identity[0].field").should be_true
+      validator.errors.any?(&.path.== "$.components[0].evidence.identity[0].methods[0].technique").should be_true
+    end
+
+    it "passes a valid evidence identity" do
+      identity = CycloneDX::EvidenceIdentity.new(field: "purl",
+        methods: [CycloneDX::EvidenceMethod.new(technique: "manifest-analysis", confidence: 1.0)])
+      comp = CycloneDX::Component.new(name: "a", version: "1",
+        evidence: CycloneDX::Evidence.new(identity: [identity]))
+      CycloneDX::Validator.new.validate(CycloneDX::BOM.new([comp], "1.6")).should be_true
+    end
+
     it "formats error messages with to_s" do
       comp = CycloneDX::Component.new(name: "", version: "1.0")
       bom = CycloneDX::BOM.new([comp], "1.6")

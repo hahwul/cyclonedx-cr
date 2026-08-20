@@ -152,6 +152,12 @@ class App
         puts parser
         exit 0
       end
+      # The tool records its own version in `metadata.tools`, so being unable to
+      # report it made an emitted SBOM impossible to trace back to a build.
+      parser.on("-v", "--version", "Show the version") do
+        puts "cyclonedx-cr #{VERSION}"
+        exit 0
+      end
       parser.invalid_option do |flag|
         STDERR.puts "Error: Unknown option '#{flag}'."
         STDERR.puts parser
@@ -603,8 +609,13 @@ class App
   # not a released tag, and that composite string resolves to neither, so the
   # embedded SHA is used instead. A plain `X.Y.Z` is left alone; it is the tag
   # (modulo a `v` prefix, which the forges resolve either way).
+  #
+  # A `version: 1.0` lock file instead names the reference directly, so `tag:` is
+  # the last fallback. `branch:` deliberately is not: a branch name is neither a
+  # tag nor a commit, and it identifies a moving target rather than the tree that
+  # was actually installed.
   private def purl_version(details : ShardLockEntry) : String?
-    details.commit || details.version
+    details.commit || details.version || details.tag
   end
 
   # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only
