@@ -42,8 +42,21 @@ class ShardLockEntry
   # The local path if the dependency is a local path dependency.
   getter path : String?
 
-  # The commit SHA embedded in `version`, when shards recorded one.
+  # `commit:`, `tag:` and `branch:` are the git-family resolver's reference
+  # parameters. Lock files written by current shards (`version: 2.0`) fold the
+  # resolved commit into `version` instead, but shards still reads — and Crystal
+  # projects still have checked in — `version: 1.0` lock files, whose entries are
+  # parsed as plain dependencies and so may carry any of these keys directly.
+  # Ignoring them meant a locked dependency that names its exact commit right
+  # there in the file produced a PURL with no version at all.
+  @[YAML::Field(key: "commit")]
+  getter locked_commit : String?
+  getter tag : String?
+  getter branch : String?
+
+  # The commit SHA this entry locks: the explicit `commit:` key if present,
+  # otherwise the one shards embedded in `version`.
   def commit : String?
-    @version.try(&.match(GIT_COMMIT_VERSION)).try(&.[1])
+    @locked_commit || @version.try(&.match(GIT_COMMIT_VERSION)).try(&.[1])
   end
 end

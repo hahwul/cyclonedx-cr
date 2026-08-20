@@ -52,7 +52,7 @@ bin/cyclonedx-cr
 
 ### From Source
 
-Requirements: [Crystal](https://crystal-lang.org/) 1.6.2+
+Requirements: [Crystal](https://crystal-lang.org/) 1.21.0+
 
 ```bash
 git clone https://github.com/hahwul/cyclonedx-cr.git
@@ -84,6 +84,7 @@ Usage: cyclonedx-cr [arguments]
     --output-format FORMAT           Output format (options: json, xml, csv, default: json)
     --reproducible                   Pin the timestamp and serial number so repeated runs over unchanged inputs produce identical output
     -h, --help                       Show this help
+    -v, --version                    Show the version
 ```
 
 ### Reproducible output

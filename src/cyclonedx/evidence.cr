@@ -21,6 +21,16 @@ module CycloneDX
   class EvidenceMethod
     include JSON::Serializable
 
+    # `evidenceTechnique`. Every value was introduced together with the enum in
+    # 1.5, and `evidence/identity` is itself gated to 1.5+, so no value can ever
+    # reach a document that does not permit it — this list is for validation
+    # only.
+    VALID_TECHNIQUES = [
+      "source-code-analysis", "binary-analysis", "manifest-analysis",
+      "ast-fingerprint", "hash-comparison", "instrumentation",
+      "dynamic-analysis", "filename", "attestation", "other",
+    ]
+
     getter technique : String
     getter confidence : Float64?
 
@@ -39,6 +49,16 @@ module CycloneDX
 
   class EvidenceIdentity
     include JSON::Serializable
+
+    # `identityFieldType`. This is the union across all supported spec versions;
+    # `omniborId` and `swhid` only exist from 1.6 — see
+    # `VersionGate::IDENTITY_FIELD_VERSIONS`. The enum designates no catch-all,
+    # so a too-new value cannot be downgraded, only reported.
+    VALID_FIELDS = [
+      "group", "name", "version", "purl", "cpe", "swid", "hash",
+      # 1.6+
+      "omniborId", "swhid",
+    ]
 
     getter field : String?
     getter confidence : Float64?

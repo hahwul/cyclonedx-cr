@@ -51,6 +51,11 @@ crystal spec
 ```
 All new features or bug fixes must include corresponding specs.
 
+`spec/app_integration_spec.cr` drives the compiled `./bin/cyclonedx-cr`, not the
+library, so **run `shards build` before `crystal spec`** after touching `src/`.
+The suite aborts with a reminder rather than reporting the previous build's
+behaviour as a regression.
+
 #### Schema-validation specs
 
 Generated documents are validated against the official CycloneDX schemas

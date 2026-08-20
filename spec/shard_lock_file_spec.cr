@@ -120,6 +120,48 @@ describe ShardLockFile do
       shards["tagged"].commit.should be_nil
     end
 
+    it "parses the git reference keys of a version 1.0 lock file" do
+      # shards still reads `version: 1.0` lock files, whose entries are parsed
+      # as plain dependencies and so name their reference directly rather than
+      # folding it into `version`.
+      yaml = <<-YAML
+        version: 1.0
+        shards:
+          pinned:
+            github: crystal-ameba/ameba
+            commit: 0f4b2d5a1c9e7f3b8a6d4c2e0f1a3b5c7d9e1f20
+          tagged:
+            github: kemalcr/kemal
+            tag: v1.4.0
+          tracked:
+            git: https://github.com/o/r.git
+            branch: main
+        YAML
+
+      shards = ShardLockFile.from_yaml(yaml).shards
+      shards["pinned"].commit.should eq("0f4b2d5a1c9e7f3b8a6d4c2e0f1a3b5c7d9e1f20")
+      shards["pinned"].version.should be_nil
+      shards["tagged"].tag.should eq("v1.4.0")
+      shards["tagged"].commit.should be_nil
+      shards["tracked"].branch.should eq("main")
+      shards["tracked"].commit.should be_nil
+      shards["tracked"].tag.should be_nil
+    end
+
+    it "prefers an explicit commit key over one embedded in the version" do
+      yaml = <<-YAML
+        version: 1.0
+        shards:
+          both:
+            github: o/r
+            version: 0.1.0+git.commit.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        YAML
+
+      ShardLockFile.from_yaml(yaml).shards["both"].commit
+        .should eq("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    end
+
     it "parses an empty shards section" do
       yaml = <<-YAML
         version: 2.0

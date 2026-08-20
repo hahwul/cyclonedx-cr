@@ -327,4 +327,91 @@ describe CycloneDX::VersionGate do
       svc_bom.call("1.6").to_xml.should contain("<tags>")
     end
   end
+
+  describe "(g) vulnerability rating method gating (scoreSourceType)" do
+    rating_bom = ->(version : String, scoring_method : String) do
+      rating = CycloneDX::VulnerabilityRating.new(score: 7.5, severity: "high", method: scoring_method)
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", bom_ref: "vuln-1", ratings: [rating])
+      CycloneDX::BOM.new([] of CycloneDX::Component, version, vulnerabilities: [vuln])
+    end
+
+    it "downgrades a 1.5-only scoring method to 'other' under 1.4 (JSON and XML)" do
+      # `CVSSv4` and `SSVC` joined scoreSourceType in 1.5; the enum designates
+      # `other` as its catch-all, so the value is repairable rather than fatal.
+      %w[CVSSv4 SSVC].each do |scoring_method|
+        bom = rating_bom.call("1.4", scoring_method)
+        bom.to_json.should contain(%("method":"other"))
+        bom.to_json.should_not contain(scoring_method)
+        bom.to_xml.should contain("<method>other</method>")
+        bom.to_xml.should_not contain(scoring_method)
+      end
+    end
+
+    it "warns rather than failing, since the downgrade keeps the output valid" do
+      validator = CycloneDX::Validator.new
+      validator.validate(rating_bom.call("1.4", "CVSSv4")).should be_true
+      warning = validator.warnings.find!(&.path.ends_with?("ratings[0].method"))
+      warning.message.should contain("CVSSv4")
+      warning.message.should contain("emitted as 'other'")
+    end
+
+    it "keeps a 1.5-only scoring method from 1.5 on" do
+      %w[1.5 1.6 1.7].each do |version|
+        bom = rating_bom.call(version, "CVSSv4")
+        bom.to_json.should contain(%("method":"CVSSv4"))
+        bom.to_xml.should contain("<method>CVSSv4</method>")
+        CycloneDX::Validator.new.validate(bom).should be_true
+      end
+    end
+
+    it "leaves a scoring method that every version permits alone" do
+      bom = rating_bom.call("1.4", "CVSSv31")
+      bom.to_json.should contain(%("method":"CVSSv31"))
+      bom.to_xml.should contain("<method>CVSSv31</method>")
+    end
+  end
+
+  describe "(h) evidence identity field gating (identityFieldType)" do
+    identity_bom = ->(version : String, field : String) do
+      identity = CycloneDX::EvidenceIdentity.new(field: field, confidence: 0.9,
+        methods: [CycloneDX::EvidenceMethod.new(technique: "manifest-analysis", confidence: 1.0)])
+      comp = CycloneDX::Component.new(name: "lib", version: "1.0", bom_ref: "lib@1.0",
+        evidence: CycloneDX::Evidence.new(identity: [identity]))
+      CycloneDX::BOM.new([comp], version)
+    end
+
+    it "errors on a 1.6-only identity field under 1.5, which has no catch-all" do
+      %w[omniborId swhid].each do |field|
+        validator = CycloneDX::Validator.new
+        validator.validate(identity_bom.call("1.5", field)).should be_false
+        error = validator.errors.find!(&.path.ends_with?("identity[0].field"))
+        error.message.should contain(field)
+        error.message.should contain("no older equivalent")
+      end
+    end
+
+    it "accepts a 1.6-only identity field from 1.6 on" do
+      %w[1.6 1.7].each do |version|
+        bom = identity_bom.call(version, "omniborId")
+        CycloneDX::Validator.new.validate(bom).should be_true
+        bom.to_json.should contain(%("field":"omniborId"))
+        bom.to_xml.should contain("<field>omniborId</field>")
+      end
+    end
+
+    it "does not flag an identity field under 1.4, where identity is stripped whole" do
+      validator = CycloneDX::Validator.new
+      bom = identity_bom.call("1.4", "omniborId")
+      validator.validate(bom).should be_true
+      bom.to_json.should_not contain("omniborId")
+    end
+
+    it "leaves the evidence <method> wrapper alone while gating <method> scores" do
+      # `<method>` names both a scoreSourceType value holder and the evidence
+      # identity method wrapper; the XML filter matches by element name, so the
+      # wrapper must not be rewritten to the scoring catch-all.
+      xml = identity_bom.call("1.4", "purl").to_xml
+      xml.should_not contain(">other<")
+    end
+  end
 end

@@ -1,10 +1,30 @@
 require "spec"
 require "json"
+require "../src/app"
 require "../src/cyclonedx/bom"
 require "./support/schema_validation"
 
 BINARY   = "bin/cyclonedx-cr"
 FIXTURES = "spec/fixtures"
+
+# Every example below runs the *compiled* binary rather than the library, so a
+# missing or stale `bin/cyclonedx-cr` makes them report a dozen failures that
+# describe the previous build instead of the working tree — which reads exactly
+# like a real regression. Check it up front and say what to do instead. CI builds
+# before running the suite, so this never fires there.
+private def assert_binary_is_current!
+  unless File.exists?(BINARY)
+    abort "#{BINARY} is missing; run `shards build` before `crystal spec`."
+  end
+
+  built_at = File.info(BINARY).modification_time
+  newest = Dir.glob("src/**/*.cr").max_of? { |path| File.info(path).modification_time }
+  return unless newest && newest > built_at
+
+  abort "#{BINARY} is older than src/; run `shards build` before `crystal spec`."
+end
+
+assert_binary_is_current!
 
 # Runs the binary against the PURL-canonicalization fixture and returns a
 # name => purl map for the emitted components.
@@ -52,6 +72,15 @@ describe "App Integration" do
       output = `#{BINARY} -h 2>&1`
       output.should contain("Usage: cyclonedx-cr")
       $?.success?.should be_true
+    end
+
+    it "reports its version with --version and -v" do
+      # The version it prints is the one it stamps into `metadata.tools`.
+      %w[--version -v].each do |flag|
+        output = `#{BINARY} #{flag} 2>&1`
+        output.strip.should eq("cyclonedx-cr #{App::VERSION}")
+        $?.success?.should be_true
+      end
     end
 
     it "rejects unknown options" do
@@ -585,6 +614,19 @@ describe "App Integration" do
         refs.map(&.["url"].as_s).should contain(url)
         refs.map(&.["type"].as_s).should contain("vcs")
       end
+    end
+
+    it "uses the reference a version 1.0 lock file names directly" do
+      # A `version: 1.0` lock (still readable by shards) records `commit:`/`tag:`
+      # instead of folding the reference into `version`. Ignoring those keys left
+      # the PURL with no version at all, even though the file names the exact
+      # tree that was installed.
+      purls = purls_for("#{FIXTURES}/legacy_v1_lock.lock")
+      purls["pinned"].should eq("pkg:github/crystal-ameba/ameba@0f4b2d5a1c9e7f3b8a6d4c2e0f1a3b5c7d9e1f20")
+      purls["tagged"].should eq("pkg:github/kemalcr/kemal@v1.4.0")
+      # A branch is neither a tag nor a commit: it names a moving target, not the
+      # installed tree, so it must not be asserted as the PURL version.
+      purls["tracked"].should eq("pkg:github/owner/tracked")
     end
 
     it "omits the version entirely for a dependency that has none" do

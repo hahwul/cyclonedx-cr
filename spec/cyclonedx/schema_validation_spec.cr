@@ -118,7 +118,8 @@ private def rich_bom(version : String) : CycloneDX::BOM
     source: CycloneDX::VulnerabilitySource.new(name: "NVD", url: "https://nvd.example"),
     references: [CycloneDX::VulnerabilityReference.new(id: "GHSA-x",
       source: CycloneDX::VulnerabilitySource.new(name: "GH", url: "https://gh.example"))],
-    ratings: [CycloneDX::VulnerabilityRating.new(score: 7.5, severity: "high", method: "CVSSv3")],
+    # `CVSSv4` is 1.5-only and downgrades to the `other` catch-all below 1.5.
+    ratings: [CycloneDX::VulnerabilityRating.new(score: 7.5, severity: "high", method: "CVSSv4")],
     cwes: [79, 89], description: "d", detail: "det", recommendation: "rec", workaround: "wa",
     proof_of_concept: CycloneDX::ProofOfConcept.new(reproduction_steps: "rs",
       supporting_material: [CycloneDX::AttachedText.new(content: "x")]),
