@@ -154,9 +154,18 @@ class CycloneDX::BOM
     @ungated = false
   end
 
+  # Anything outside the XML 1.0 `Char` production (§2.2): most C0 controls,
+  # U+FFFE and U+FFFF. Not even a character reference can carry these.
+  XML_ILLEGAL_CHARS = /[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/
+
   # Serializes the BOM to XML format.
+  #
+  # libxml2's writer emits illegal characters (and invalid UTF-8) raw, and
+  # parsing that back for the version gate silently truncated the document, so
+  # both become U+FFFD first (replaced rather than dropped so distinct bom-refs
+  # stay distinct). `scrub` must come first: the regex raises on invalid UTF-8.
   def to_xml : String
-    raw = build_xml
+    raw = build_xml.scrub.gsub(XML_ILLEGAL_CHARS, "\uFFFD")
     VersionGate.filter_xml(raw, @spec_version)
   end
 

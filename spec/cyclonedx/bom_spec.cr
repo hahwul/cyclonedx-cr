@@ -376,3 +376,22 @@ describe CycloneDX::BOM do
     end
   end
 end
+
+describe "CycloneDX::BOM XML characters" do
+  # XML 1.0 §2.2 `Char` excludes most C0 controls. libxml2 writes them raw, and
+  # the version-gate re-parse then recovered by truncating the document.
+  it "replaces characters XML 1.0 cannot represent instead of corrupting the document" do
+    components = [
+      CycloneDX::Component.new(name: "foo", version: "1.0\u0001", bom_ref: "foo@1.0\u0001"),
+      CycloneDX::Component.new(name: "bar", version: "2.0", bom_ref: "bar@2.0", description: "a\uFFFEb"),
+      CycloneDX::Component.new(name: String.new(Bytes[0x62, 0xFF, 0x7A]), bom_ref: "baz"),
+    ]
+    doc = XML.parse(CycloneDX::BOM.new(components, "1.6").to_xml)
+
+    doc.errors.should be_nil
+    nodes = doc.xpath_nodes("//*[local-name()='component']")
+    nodes.map(&.["bom-ref"]).should eq(["foo@1.0\uFFFD", "bar@2.0", "baz"])
+    nodes[2].first_element_child.try(&.content).should eq("b\uFFFDz")
+    doc.xpath_string("string(//*[local-name()='description'])").should eq("a\uFFFDb")
+  end
+end
