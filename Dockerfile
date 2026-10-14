@@ -1,5 +1,5 @@
 ##= BUILDER =##
-FROM crystallang/crystal:1.20.2 AS builder
+FROM crystallang/crystal:1.22.0 AS builder
 
 WORKDIR /cyclonedx-cr
 
@@ -20,14 +20,14 @@ RUN shards build --release --no-debug --production && \
     strip bin/cyclonedx-cr
 
 ##= RUNNER =##
-# Match builder's ABI (Ubuntu 24.04) to avoid ICU/glibc mismatches
-FROM ubuntu:24.04
+# Match builder's ABI (Ubuntu 26.04) to avoid ICU/glibc mismatches
+FROM ubuntu:26.04
 
 # Install runtime libraries required by the linked binary
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libyaml-0-2 \
-    libxml2 \
-    libicu74 \
+    libxml2-16 \
+    libicu78 \
     libpcre2-8-0 \
     libgc1 \
     liblzma5 \
