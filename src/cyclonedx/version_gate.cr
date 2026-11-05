@@ -312,6 +312,12 @@ module CycloneDX
       {:vulnerability, "ratings"}  => :rating,
       {:vulnerability, "tools"}    => :tools,
 
+      # An annotator may be a full component or service.
+      {:bom, "annotations"}      => :annotation,
+      {:annotation, "annotator"} => :annotator,
+      {:annotator, "component"}  => :component,
+      {:annotator, "service"}    => :service,
+
       {:licenses_array, "license"} => :license,
     }
 

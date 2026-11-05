@@ -148,6 +148,9 @@ private def rich_bom(version : String) : CycloneDX::BOM
   # 1.5+ object form of `vulnerability.tools`.
   vuln_obj_tools = CycloneDX::Vulnerability.new(id: "CVE-2024-2", bom_ref: "vuln-2",
     tool_components: [CycloneDX::Component.new(name: "scanner", component_type: "application")])
+  # Attached to the `library` component below rather than a
+  # `machine-learning-model` one only because that type has no 1.4 equivalent,
+  # and this BOM is validated at every version.
   model_card = CycloneDX::ModelCard.new(considerations: CycloneDX::ModelConsiderations.new(
     ethical_considerations: [CycloneDX::EthicalConsideration.new(name: "bias", mitigation_strategy: "audit")]))
   formula = CycloneDX::Formula.new(bom_ref: "formula-1",

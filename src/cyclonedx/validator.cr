@@ -206,10 +206,11 @@ module CycloneDX
     # 1.7 lifted the restriction: `licenseChoice` is "a list of SPDX licenses
     # and/or named licenses and/or SPDX License Expression" (each item a
     # `oneOf`), and the XSD choice is `maxOccurs="unbounded"`.
-    LICENSE_MIX_MIN_VERSION = "1.7"
+    LICENSE_MIX_LAST_STRICT_VERSION = "1.6"
 
     private def validate_licenses_array(node : JSON::Any, path : String)
-      return unless VersionGate.newer?(LICENSE_MIX_MIN_VERSION, @spec_version)
+      # Relaxed only for a *known* version after 1.6; anything else stays strict.
+      return if VersionGate.newer?(@spec_version, LICENSE_MIX_LAST_STRICT_VERSION)
       entries = node.as_a?
       return unless entries
       expressions = entries.count { |entry| entry.as_h?.try(&.has_key?("expression")) }
