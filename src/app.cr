@@ -352,7 +352,10 @@ class App
   private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
 
   # `shard.yml` author entries: `Name <email>`, where the name may be absent.
-  private AUTHOR_PATTERN = /\A([^<]*)<([^>]+)>\s*\z/
+  # The bracketed part must look like an address (`local@domain`, RFC 5322
+  # addr-spec): the JSON schemas type `email` as `idn-email`, so `Foo <n/a>`
+  # stays a plain name rather than becoming a schema-invalid email.
+  private AUTHOR_PATTERN = /\A([^<]*)<\s*([^<>@\s]+@[^<>@\s]+)\s*>\s*\z/
 
   # Build a licenses array for a shard.yml license field.
   #

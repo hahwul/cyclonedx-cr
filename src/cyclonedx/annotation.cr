@@ -1,6 +1,8 @@
 require "json"
 require "xml"
 require "./models"
+require "./component"
+require "./service"
 
 module CycloneDX
   class Annotator
@@ -8,14 +10,19 @@ module CycloneDX
 
     getter organization : OrganizationalEntity?
     getter individual : OrganizationalContact?
+    getter component : Component?
+    getter service : Service?
 
-    def initialize(@organization : OrganizationalEntity? = nil, @individual : OrganizationalContact? = nil)
+    def initialize(@organization : OrganizationalEntity? = nil, @individual : OrganizationalContact? = nil,
+                   @component : Component? = nil, @service : Service? = nil)
     end
 
     def to_xml(xml : XML::Builder)
       xml.element("annotator") do
         @organization.try(&.to_xml(xml, "organization"))
         @individual.try(&.to_xml(xml, "individual"))
+        @component.try(&.to_xml(xml))
+        @service.try(&.to_xml(xml))
       end
     end
   end

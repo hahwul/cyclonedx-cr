@@ -310,6 +310,7 @@ module CycloneDX
 
       {:vulnerability, "analysis"} => :vulnerability_analysis,
       {:vulnerability, "ratings"}  => :rating,
+      {:vulnerability, "tools"}    => :tools,
 
       {:licenses_array, "license"} => :license,
     }

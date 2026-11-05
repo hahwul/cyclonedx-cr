@@ -334,6 +334,47 @@ describe "BOM JSON deserialization" do
     crypto.oid.should eq("2.16.840.1.101.3.4.1.6")
   end
 
+  it "accepts the single-object evidence.identity form (1.5, deprecated in 1.6+)" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"serialNumber":"urn:uuid:test",
+      "components":[{"type":"library","name":"a",
+        "evidence":{"identity":{"field":"purl","confidence":1}}}]})
+    identity = CycloneDX::BOM.from_json(json).components[0].evidence.not_nil!.identity.not_nil!
+    identity.size.should eq(1)
+    identity[0].field.should eq("purl")
+  end
+
+  it "round-trips the 1.5+ object form of vulnerability.tools" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"serialNumber":"urn:uuid:test",
+      "vulnerabilities":[{"id":"CVE-1","tools":{"components":[{"type":"application","name":"scanner"}],
+        "services":[{"name":"feed"}]}}]})
+    vuln = CycloneDX::BOM.from_json(json).vulnerabilities.not_nil![0]
+    vuln.tool_components.not_nil![0].name.should eq("scanner")
+    vuln.tool_services.not_nil![0].name.should eq("feed")
+    tools = JSON.parse(CycloneDX::BOM.from_json(json).to_json)["vulnerabilities"][0]["tools"]
+    tools["components"][0]["name"].should eq("scanner")
+    tools["services"][0]["name"].should eq("feed")
+  end
+
+  it "round-trips component and service annotators" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"serialNumber":"urn:uuid:test",
+      "annotations":[
+        {"subjects":[],"timestamp":"2024-01-01T00:00:00Z","text":"t","annotator":{"component":{"type":"application","name":"tool"}}},
+        {"subjects":[],"timestamp":"2024-01-01T00:00:00Z","text":"t","annotator":{"service":{"name":"svc"}}}]})
+    out = JSON.parse(CycloneDX::BOM.from_json(json).to_json)["annotations"]
+    out[0]["annotator"]["component"]["name"].should eq("tool")
+    out[1]["annotator"]["service"]["name"].should eq("svc")
+  end
+
+  it "parses model-card ethical considerations as risk objects" do
+    json = %q({"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"serialNumber":"urn:uuid:test",
+      "components":[{"type":"machine-learning-model","name":"m","modelCard":{"considerations":
+        {"ethicalConsiderations":[{"name":"bias","mitigationStrategy":"audit"}]}}}]})
+    risk = CycloneDX::BOM.from_json(json).components[0].model_card.not_nil!
+      .considerations.not_nil!.ethical_considerations.not_nil![0]
+    risk.name.should eq("bias")
+    risk.mitigation_strategy.should eq("audit")
+  end
+
   it "round-trips through JSON serialization" do
     components = [CycloneDX::Component.new(name: "lib", version: "1.0.0", bom_ref: "lib@1.0.0")]
     deps = [CycloneDX::Dependency.new(ref: "lib@1.0.0")]

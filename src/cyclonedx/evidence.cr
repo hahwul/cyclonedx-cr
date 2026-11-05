@@ -101,9 +101,24 @@ module CycloneDX
     end
   end
 
+  # `evidence.identity` is a single object in 1.5 and an array from 1.6, which
+  # still accepts the single-object form (deprecated). Both parse to an array;
+  # the version gate collapses it back to one object for a 1.5 document.
+  module EvidenceIdentityConverter
+    def self.from_json(pull : JSON::PullParser) : Array(EvidenceIdentity)
+      return [EvidenceIdentity.new(pull)] if pull.kind.begin_object?
+      Array(EvidenceIdentity).new(pull)
+    end
+
+    def self.to_json(value : Array(EvidenceIdentity), json : JSON::Builder) : Nil
+      value.to_json(json)
+    end
+  end
+
   class Evidence
     include JSON::Serializable
 
+    @[JSON::Field(converter: CycloneDX::EvidenceIdentityConverter)]
     getter identity : Array(EvidenceIdentity)?
     # `occurrences` is a componentEvidence-level field, NOT a child of
     # `identity` (XSD componentEvidenceType: identity, occurrences, callstack,

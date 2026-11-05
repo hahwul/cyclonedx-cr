@@ -116,6 +116,13 @@ describe CycloneDX::License do
       xml_str.should contain("<url>https://opensource.org/licenses/MIT</url>")
     end
 
+    it "emits text before url, as the licenseType sequence requires" do
+      license = CycloneDX::License.new(name: "Custom", url: "https://example.com/l",
+        text: CycloneDX::AttachedText.new(content: "abc"))
+      xml_str = XML.build { |xml| license.to_xml(xml) }
+      xml_str.index!("<text").should be < xml_str.index!("<url>")
+    end
+
     it "includes bom-ref and acknowledgement in XML" do
       license = CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "declared")
       xml_str = XML.build(indent: "  ") do |xml|
