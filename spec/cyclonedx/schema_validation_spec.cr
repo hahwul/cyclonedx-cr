@@ -53,7 +53,8 @@ private def rich_bom(version : String) : CycloneDX::BOM
   prop = CycloneDX::Property.new(name: "k", value: "v")
 
   lic_id = CycloneDX::License.new(id: "MIT", bom_ref: "lic-1", acknowledgement: "declared")
-  lic_named = CycloneDX::License.new(name: "Custom",
+  # `text` and `url` together: the XSD orders them text, then url.
+  lic_named = CycloneDX::License.new(name: "Custom", url: "https://example.com/license",
     text: CycloneDX::AttachedText.new(content: "abc", content_type: "text/plain", encoding: "base64"))
   lic_expr = CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0", bom_ref: "le-1")
 
@@ -141,6 +142,17 @@ private def rich_bom(version : String) : CycloneDX::BOM
     assemblies: ["root@1.0.0"], dependencies: ["dep@2.0"], vulnerabilities: ["vuln-1"])
   annot = CycloneDX::Annotation.new(bom_ref: "ann-1", subjects: ["root@1.0.0"],
     annotator: CycloneDX::Annotator.new(organization: org), timestamp: "2024-01-01T00:00:00Z", text: "note")
+  annot_by_tool = CycloneDX::Annotation.new(subjects: ["root@1.0.0"], timestamp: "2024-01-01T00:00:00Z",
+    text: "scanned", annotator: CycloneDX::Annotator.new(
+    component: CycloneDX::Component.new(name: "annotating-tool", component_type: "application")))
+  # 1.5+ object form of `vulnerability.tools`.
+  vuln_obj_tools = CycloneDX::Vulnerability.new(id: "CVE-2024-2", bom_ref: "vuln-2",
+    tool_components: [CycloneDX::Component.new(name: "scanner", component_type: "application")])
+  # Attached to the `library` component below rather than a
+  # `machine-learning-model` one only because that type has no 1.4 equivalent,
+  # and this BOM is validated at every version.
+  model_card = CycloneDX::ModelCard.new(considerations: CycloneDX::ModelConsiderations.new(
+    ethical_considerations: [CycloneDX::EthicalConsideration.new(name: "bias", mitigation_strategy: "audit")]))
   formula = CycloneDX::Formula.new(bom_ref: "formula-1",
     workflows: [CycloneDX::Workflow.new(bom_ref: "wf-1", uid: "wf-uid", name: "w", task_types: ["build"],
       tasks: [CycloneDX::Task.new(bom_ref: "task-1", uid: "task-uid", name: "t", task_types: ["build"],
@@ -157,11 +169,11 @@ private def rich_bom(version : String) : CycloneDX::BOM
 
   CycloneDX::BOM.new(spec_version: version, metadata: metadata,
     components: [CycloneDX::Component.new(name: "dep", version: "2.0", bom_ref: "dep@2.0",
-      purl: "pkg:github/o/dep@2.0", scope: "optional")],
+      purl: "pkg:github/o/dep@2.0", scope: "optional", model_card: model_card)],
     dependencies: [CycloneDX::Dependency.new(ref: "root@1.0.0", depends_on: ["dep@2.0"]),
                    CycloneDX::Dependency.new(ref: "dep@2.0")],
-    properties: [prop], vulnerabilities: [vuln], services: [service], compositions: [composition],
-    annotations: [annot], formulation: [formula], declarations: declarations,
+    properties: [prop], vulnerabilities: [vuln, vuln_obj_tools], services: [service], compositions: [composition],
+    annotations: [annot, annot_by_tool], formulation: [formula], declarations: declarations,
     definitions: definitions, external_references: [extref])
 end
 

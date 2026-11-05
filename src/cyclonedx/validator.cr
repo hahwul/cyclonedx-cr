@@ -31,6 +31,10 @@ module CycloneDX
     # they are the record of what the declared version could not carry.
     getter warnings : Array(ValidationError)
 
+    # Spec version of the BOM being validated, for the few rules that differ
+    # between versions.
+    @spec_version = ""
+
     def initialize
       @errors = [] of ValidationError
       @warnings = [] of ValidationError
@@ -53,6 +57,7 @@ module CycloneDX
     end
 
     private def validate_bom(bom : BOM)
+      @spec_version = bom.spec_version
       add_error("$.bomFormat", "must be 'CycloneDX'") unless bom.bom_format == "CycloneDX"
       add_error("$.specVersion", "must be a supported version") unless BOM::SUPPORTED_VERSIONS.includes?(bom.spec_version)
       unless bom.serial_number.matches?(SERIAL_NUMBER_PATTERN)
@@ -191,13 +196,21 @@ module CycloneDX
       add_error("#{path}.license", "must have either an 'id' or a 'name'")
     end
 
-    # A `licenses` array is a `oneOf` in the schema: either a list of
+    # Up to 1.6 a `licenses` array is a `oneOf` in the schema: either a list of
     # `{"license": …}` entries, or a list holding a *single* `{"expression": …}`
     # (`maxItems: 1`). The XSD says the same with an `xs:choice` between
     # `<license>` elements and one `<expression>`. The object model stores both
     # kinds in one `Array(License | LicenseExpression)`, so a caller can build a
-    # mixed array, or several expressions, which every official schema rejects.
+    # mixed array, or several expressions, which those schemas reject.
+    #
+    # 1.7 lifted the restriction: `licenseChoice` is "a list of SPDX licenses
+    # and/or named licenses and/or SPDX License Expression" (each item a
+    # `oneOf`), and the XSD choice is `maxOccurs="unbounded"`.
+    LICENSE_MIX_LAST_STRICT_VERSION = "1.6"
+
     private def validate_licenses_array(node : JSON::Any, path : String)
+      # Relaxed only for a *known* version after 1.6; anything else stays strict.
+      return if VersionGate.newer?(@spec_version, LICENSE_MIX_LAST_STRICT_VERSION)
       entries = node.as_a?
       return unless entries
       expressions = entries.count { |entry| entry.as_h?.try(&.has_key?("expression")) }

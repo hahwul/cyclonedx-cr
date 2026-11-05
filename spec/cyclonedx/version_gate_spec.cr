@@ -414,4 +414,15 @@ describe CycloneDX::VersionGate do
       xml.should_not contain(">other<")
     end
   end
+
+  it "gates fields inside an annotator component in JSON" do
+    # `authors` on a component is 1.6+; annotations themselves are 1.5+.
+    annotator = CycloneDX::Annotator.new(component: CycloneDX::Component.new(
+      name: "tool", component_type: "application",
+      authors: [CycloneDX::OrganizationalContact.new(name: "a")]))
+    note = CycloneDX::Annotation.new(subjects: ["tool"], annotator: annotator,
+      timestamp: "2024-01-01T00:00:00Z", text: "t")
+    bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.5", annotations: [note])
+    JSON.parse(bom.to_json)["annotations"][0]["annotator"]["component"]["authors"]?.should be_nil
+  end
 end

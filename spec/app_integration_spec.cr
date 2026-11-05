@@ -663,6 +663,19 @@ describe "App Integration" do
       authors.map(&.["email"].as_s).should eq(["test@example.com", "second@example.com"])
     end
 
+    it "keeps an author whose bracketed part is not an address as a plain name" do
+      # The JSON schemas type `email` as `idn-email`, so `n/a` must not become one.
+      output = `#{BINARY} -s #{FIXTURES}/non_email_author_shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`
+      authors = JSON.parse(output)["metadata"]["component"]["authors"].as_a
+      authors[0]["email"].should eq("jane@example.com")
+      authors[1]["name"].should eq("Team <n/a>")
+      authors[1]["email"]?.should be_nil
+      if SchemaValidation::JSON_VALIDATOR
+        ok, err = SchemaValidation.json_schema_validate(output, "1.6")
+        fail(err) unless ok
+      end
+    end
+
     it "omits the 1.6-only authors array for older spec versions" do
       %w[1.4 1.5].each do |version|
         output = `#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --spec-version #{version} 2>&1`

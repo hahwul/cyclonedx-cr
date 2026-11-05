@@ -91,10 +91,11 @@ module CycloneDX
         elsif name_val = @name
           xml.element("name") { xml.text name_val }
         end
+        # licenseType <sequence>: (id | name), text, url, ...
+        @text.try(&.to_xml(xml))
         if url_val = @url
           xml.element("url") { xml.text url_val }
         end
-        @text.try(&.to_xml(xml))
       end
     end
   end
@@ -828,14 +829,14 @@ module CycloneDX
     @[JSON::Field(key: "performanceMetrics")]
     getter performance_metrics : Array(PerformanceMetric)?
     @[JSON::Field(key: "ethicalConsiderations")]
-    getter ethical_considerations : Array(String)?
+    getter ethical_considerations : Array(EthicalConsideration)?
     @[JSON::Field(key: "fairnessAssessments")]
     getter fairness_assessments : Array(FairnessAssessment)?
 
     def initialize(@users : Array(String)? = nil, @use_cases : Array(String)? = nil,
                    @technical_limitations : Array(String)? = nil,
                    @performance_metrics : Array(PerformanceMetric)? = nil,
-                   @ethical_considerations : Array(String)? = nil,
+                   @ethical_considerations : Array(EthicalConsideration)? = nil,
                    @fairness_assessments : Array(FairnessAssessment)? = nil)
     end
 
@@ -863,7 +864,7 @@ module CycloneDX
         end
         if ec = @ethical_considerations
           xml.element("ethicalConsiderations") do
-            ec.each { |e| xml.element("ethicalConsideration") { xml.text e } }
+            ec.each(&.to_xml(xml))
           end
         end
         if fa = @fairness_assessments
@@ -871,6 +872,26 @@ module CycloneDX
             fa.each(&.to_xml(xml))
           end
         end
+      end
+    end
+  end
+
+  # A model-card ethical consideration: the schema's `risk` object (a name and
+  # a mitigation strategy), not a bare string.
+  class EthicalConsideration
+    include JSON::Serializable
+
+    getter name : String?
+    @[JSON::Field(key: "mitigationStrategy")]
+    getter mitigation_strategy : String?
+
+    def initialize(@name : String? = nil, @mitigation_strategy : String? = nil)
+    end
+
+    def to_xml(xml : XML::Builder)
+      xml.element("ethicalConsideration") do
+        @name.try { |n| xml.element("name") { xml.text n } }
+        @mitigation_strategy.try { |m| xml.element("mitigationStrategy") { xml.text m } }
       end
     end
   end

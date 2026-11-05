@@ -325,6 +325,19 @@ describe CycloneDX::Validator do
       validator.errors.any?(&.message.includes?("more than one license expression")).should be_true
     end
 
+    it "accepts mixed licenses and several expressions from 1.7" do
+      # 1.7 `licenseChoice`: "A list of SPDX licenses and/or named licenses
+      # and/or SPDX License Expression".
+      licenses = [
+        CycloneDX::License.new(id: "MIT"),
+        CycloneDX::LicenseExpression.new(expression: "MIT OR Apache-2.0"),
+        CycloneDX::LicenseExpression.new(expression: "BSD-3-Clause"),
+      ] of CycloneDX::License | CycloneDX::LicenseExpression
+      comp = CycloneDX::Component.new(name: "a", version: "1", licenses: licenses)
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([comp], "1.7")).should be_true
+    end
+
     it "accepts several named licenses, and a lone expression" do
       several = [
         CycloneDX::License.new(id: "MIT"), CycloneDX::License.new(id: "Apache-2.0"),
