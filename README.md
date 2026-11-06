@@ -10,7 +10,7 @@ A Crystal tool for generating [CycloneDX](https://cyclonedx.org/) Software Bill 
 - Emits output valid for the version you ask for: fields and enum values newer than the declared `specVersion` are stripped or downgraded, and the losses are reported
 - Automatically generates canonical, percent-encoded Package URLs (PURLs) for GitHub, GitLab and Bitbucket dependencies, using the locked commit when it is not a released tag
 - Records a `vcs` external reference for every dependency, including `codeberg:`, `hg:` and `fossil:` sources that have no PURL type
-- Declares the dependency graph `incomplete`, since `shard.lock` cannot express transitive edges
+- Builds the real dependency graph, transitive edges included, from the installed shards' own `shard.yml`, and says honestly (via `compositions`) where it could not
 - Reproducible output on request, for SBOMs that get committed, signed or diffed
 - Docker support for containerized usage
 - Fast and lightweight implementation in Crystal
@@ -93,7 +93,9 @@ By default every run gets a fresh `serialNumber` and the current time as its
 `metadata.timestamp`, so two SBOMs for the same project never compare equal.
 `--reproducible` pins both — the timestamp to the Unix epoch and the serial
 number to the nil UUID — which is what you want when the SBOM is committed to the
-repository, signed, or diffed between builds:
+repository, signed, or diffed between builds. The installed `lib/` is an input
+too (it supplies the [dependency graph](#dependency-graph)), so generate the SBOM
+after `shards install` everywhere you compare it:
 
 ```bash
 cyclonedx-cr --reproducible -o sbom.json
@@ -144,6 +146,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Install the shards so the SBOM records the full dependency graph
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install dependencies
+        run: shards install
+
       # Generate SBOM using hahwul/cyclonedx-cr action
       - name: Generate SBOM
         uses: hahwul/cyclonedx-cr@v1.4.0
@@ -168,8 +176,11 @@ jobs:
 Your Crystal project must have:
 - `shard.yml` file (project configuration)
 - `shard.lock` file (locked dependency versions)
+- the installed dependencies (`lib/`, or `SHARDS_INSTALL_PATH`) for a complete
+  [dependency graph](#dependency-graph); without them each shard's edges are reported as `unknown`
 
-Generate the `shard.lock` file by running `shards install` in your Crystal project.
+Generate both by running `shards install` in your Crystal project. In CI, run it
+before generating the SBOM.
 
 ## Output Formats
 
@@ -212,13 +223,34 @@ Whatever gets dropped or rewritten is reported on stderr, so a downgrade is neve
 silent. Every combination is checked against the official schemas in the test
 suite (`spec/cyclonedx/schema_validation_spec.cr`).
 
-## Dependency graph completeness
+## Dependency graph
 
 `shard.lock` records *which* shards are installed but not which shard required
-which, so only the root component's direct edges are known. The BOM therefore
-declares a `compositions` entry with `aggregate: "incomplete"` over the graph —
-without it, a consumer could not tell an unknown graph apart from a genuinely
-flat one.
+which. The edges come from the shards themselves: the root depends on the direct
+`dependencies` and `development_dependencies` of `shard.yml`, and each locked
+shard on the `dependencies` declared by its installed copy at
+`lib/<name>/shard.yml` (or under `SHARDS_INSTALL_PATH` when set). Run
+`shards install` first.
+
+A shard reachable only through `development_dependencies` gets
+`scope: optional`; anything a runtime dependency pulls in, directly or
+transitively, stays `required`.
+
+Each graph node is listed in a `compositions` entry saying how much is known
+about its edges:
+
+| `aggregate` | Meaning |
+| --- | --- |
+| `complete` | Every edge is recorded. |
+| `incomplete` | The shard declares a dependency that is missing from `shard.lock` (an out-of-sync install). |
+| `unknown` | The shard's `shard.yml` could not be read, so its edges are unknown. The shard is left out of the `dependencies` graph, since an empty `dependsOn` would claim it has none. |
+
+Anything short of `complete` is also reported on stderr, including a shard whose
+installed version (per `lib/.shards.info`) differs from the one `shard.lock` pins:
+its edges would be the wrong ones, so they are reported as `unknown`. While part
+of the runtime graph is unknown, only direct development dependencies are marked
+`optional`: a transitive shard cannot be shown to be dev-only if an unseen edge
+might reach it at runtime.
 
 ## Contributing
 

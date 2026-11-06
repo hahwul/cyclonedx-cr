@@ -1,0 +1,5 @@
+version: 2.0
+shards:
+  blank:
+    github: owner/blank
+    version: ""

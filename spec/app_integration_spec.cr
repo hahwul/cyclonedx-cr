@@ -26,6 +26,10 @@ end
 
 assert_binary_is_current!
 
+# Every example spawns the binary, which honours `SHARDS_INSTALL_PATH`; one set
+# in the developer's or CI environment would redirect the fixtures' `lib/`.
+ENV.delete("SHARDS_INSTALL_PATH")
+
 # Runs the binary against the PURL-canonicalization fixture and returns a
 # name => purl map for the emitted components.
 private def canon_purls : Hash(String, String)
@@ -56,6 +60,35 @@ private def purls_for(lock : String) : Hash(String, String)
     end
   end
   result
+end
+
+GRAPH = "#{FIXTURES}/graph"
+
+# Runs the binary over the dependency-graph fixture with `SHARDS_INSTALL_PATH`
+# set to `install` (nil unsets it, so the default `lib/` beside shard.yml is
+# used). Returns {stdout, stderr}; stderr is kept apart so warnings can be
+# asserted on without corrupting the document.
+private def run_graph(install : String? = nil, extra = [] of String) : {String, String}
+  stdout = IO::Memory.new
+  stderr = IO::Memory.new
+  args = ["-s", "#{GRAPH}/shard.yml", "-i", "#{GRAPH}/shard.lock", "--reproducible"] + extra
+  status = Process.run(BINARY, args, env: {"SHARDS_INSTALL_PATH" => install}, output: stdout, error: stderr)
+  status.success?.should be_true
+  {stdout.to_s, stderr.to_s}
+end
+
+# ref => dependsOn, for a graph BOM.
+private def edges(bom : JSON::Any) : Hash(String, Array(String))
+  bom["dependencies"].as_a.to_h { |d| {d["ref"].as_s, d["dependsOn"].as_a.map(&.as_s)} }
+end
+
+# aggregate => refs, for a graph BOM.
+private def aggregates(bom : JSON::Any) : Hash(String, Array(String))
+  bom["compositions"].as_a.to_h { |c| {c["aggregate"].as_s, c["dependencies"].as_a.map(&.as_s)} }
+end
+
+private def scopes(bom : JSON::Any) : Hash(String, String)
+  bom["components"].as_a.to_h { |c| {c["name"].as_s, c["scope"].as_s} }
 end
 
 # name => component, for the fixture exercising every shards resolver.
@@ -263,7 +296,7 @@ describe "App Integration" do
 
   describe "GitLab PURL support" do
     it "generates PURL for gitlab shorthand dependencies" do
-      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/gitlab_lock.lock 2>&1`
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/gitlab_lock.lock 2>/dev/null`
       $?.success?.should be_true
       components = JSON.parse(output)["components"].as_a
 
@@ -272,7 +305,7 @@ describe "App Integration" do
     end
 
     it "generates PURL for gitlab git URL dependencies" do
-      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/gitlab_lock.lock 2>&1`
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/gitlab_lock.lock 2>/dev/null`
       components = JSON.parse(output)["components"].as_a
 
       other_lib = components.find! { |c| c["name"] == "other_lib" }
@@ -501,7 +534,7 @@ describe "App Integration" do
     it "omits the version component from the PURL instead of asserting 'unknown'" do
       # `unknown` is a not-known placeholder, not a version. The package-url
       # encoding for an unknown version is to omit `@version` entirely.
-      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/unversioned_lock.lock 2>&1`
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/unversioned_lock.lock 2>/dev/null`
       $?.success?.should be_true
       components = JSON.parse(output)["components"].as_a
 
@@ -515,11 +548,123 @@ describe "App Integration" do
     end
   end
 
+  describe "dependency graph" do
+    it "builds the real graph from the installed shards" do
+      json, err = run_graph
+      err.should be_empty
+      bom = JSON.parse(json)
+
+      # The root depends on its direct dependencies only (runtime and dev), not
+      # on everything in shard.lock; the diamond on charlie is shared.
+      edges(bom).should eq({
+        "graph-root@1.0.0" => ["alpha@1.0.0", "bravo@1.0.0", "delta@1.0.0"],
+        "alpha@1.0.0"      => ["charlie@1.0.0"],
+        "bravo@1.0.0"      => ["charlie@1.0.0"],
+        "charlie@1.0.0"    => [] of String,
+        # delta's development_dependencies are never installed, so not edges.
+        "delta@1.0.0" => ["charlie@1.0.0", "echo@1.0.0"],
+        "echo@1.0.0"  => [] of String,
+      })
+      aggregates(bom).should eq({"complete" => edges(bom).keys})
+    end
+
+    it "marks shards reachable only through dev dependencies optional" do
+      bom = JSON.parse(run_graph[0])
+      # charlie is needed by delta (dev) but also by alpha/bravo (runtime).
+      scopes(bom).should eq({
+        "alpha" => "required", "bravo" => "required", "charlie" => "required",
+        "delta" => "optional", "echo" => "optional",
+      })
+    end
+
+    it "reports unreadable and out-of-sync shards honestly" do
+      json, err = run_graph("#{GRAPH}/lib_partial")
+      err.should contain("lib_partial/bravo/shard.yml` (")
+      err.should contain("the dependencies of `bravo` are unknown")
+      err.should contain("`alpha@1.0.0` depends on `ghost`, which is not in shard.lock")
+      err.should contain("installed `echo` is 0.9.0 but shard.lock pins 1.0.0")
+      err.should_not contain("graph-root`")
+      bom = JSON.parse(json)
+
+      # bravo (not installed) and echo (stale install) are absent from the graph
+      # rather than listed as leaves: an empty dependsOn would assert they have
+      # no dependencies.
+      edges(bom).has_key?("bravo@1.0.0").should be_false
+      edges(bom).has_key?("echo@1.0.0").should be_false
+      edges(bom)["alpha@1.0.0"].should eq(["charlie@1.0.0"])
+      # An edge back to the root project resolves to the root component.
+      edges(bom)["charlie@1.0.0"].should eq(["graph-root@1.0.0"])
+      aggregates(bom).should eq({
+        "complete"   => ["graph-root@1.0.0", "charlie@1.0.0", "delta@1.0.0"],
+        "incomplete" => ["alpha@1.0.0"],
+        "unknown"    => ["bravo@1.0.0", "echo@1.0.0"],
+      })
+      # bravo's edges are unknown, so echo cannot be shown to be dev-only; the
+      # direct dev dependency stays optional.
+      scopes(bom)["echo"].should eq("required")
+      scopes(bom)["delta"].should eq("optional")
+    end
+
+    it "falls back to an unknown graph when nothing is installed" do
+      json, err = run_graph("#{GRAPH}/not-installed")
+      err.lines.size.should eq(1)
+      err.should contain("run `shards install`")
+      bom = JSON.parse(json)
+
+      edges(bom).keys.should eq(["graph-root@1.0.0"])
+      aggregates(bom)["unknown"].size.should eq(5)
+      scopes(bom)["delta"].should eq("optional")
+    end
+
+    it "emits schema-valid graphs" do
+      [nil, "#{GRAPH}/lib_partial"].each do |install|
+        SchemaValidation::VERSIONS.each do |version|
+          if SchemaValidation::JSON_VALIDATOR
+            ok, err = SchemaValidation.json_schema_validate(run_graph(install, ["--spec-version", version])[0], version)
+            fail("bom-#{version}.schema.json validation failed:\n#{err}") unless ok
+          end
+          if SchemaValidation::XMLLINT
+            xml = run_graph(install, ["--spec-version", version, "--output-format", "xml"])[0]
+            ok, err = SchemaValidation.xsd_validate(xml, version)
+            fail("bom-#{version}.xsd validation failed:\n#{err}") unless ok
+          end
+        end
+      end
+      if SchemaValidation::XMLLINT.nil? && SchemaValidation::JSON_VALIDATOR.nil?
+        pending!("neither xmllint nor check-jsonschema is installed")
+      end
+    end
+  end
+
+  describe "warnings" do
+    it "escapes control characters so a name cannot forge a CI workflow command" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/control_char_lock.lock 2>&1 >/dev/null`
+      output.should contain("malformed repository shorthand 'o/r/x\\n::error::pwned'")
+      output.lines.none?(&.starts_with?("::")).should be_true
+    end
+  end
+
+  describe "blank versions" do
+    it "treats an empty version as absent instead of failing" do
+      output = `#{BINARY} -s #{FIXTURES}/blank_version_shard.yml -i #{FIXTURES}/blank_version_lock.lock 2>/dev/null`
+      $?.success?.should be_true
+      bom = JSON.parse(output)
+      bom["metadata"]["component"]["version"]?.should be_nil
+      blank = bom["components"].as_a.first
+      blank["version"]?.should be_nil
+      blank["purl"].should eq("pkg:github/owner/blank")
+      if SchemaValidation::JSON_VALIDATOR
+        ok, err = SchemaValidation.json_schema_validate(output, "1.6")
+        fail(err) unless ok
+      end
+    end
+  end
+
   describe "dependency scope" do
     it "keeps a shard required when it is declared as both a runtime and a dev dependency" do
       # Runtime membership wins: the shard is still needed at runtime, so
       # reporting it as `optional` understates its scope.
-      output = `#{BINARY} -s #{FIXTURES}/dual_scope_shard.yml -i #{FIXTURES}/dual_scope_lock.lock 2>&1`
+      output = `#{BINARY} -s #{FIXTURES}/dual_scope_shard.yml -i #{FIXTURES}/dual_scope_lock.lock 2>/dev/null`
       $?.success?.should be_true
       components = JSON.parse(output)["components"].as_a
 
@@ -645,15 +790,6 @@ describe "App Integration" do
 
       without_targets = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/empty_lock.lock 2>/dev/null`
       JSON.parse(without_targets)["metadata"]["component"]["type"].should eq("library")
-    end
-
-    it "declares the dependency graph incomplete" do
-      bom = JSON.parse(`#{BINARY} -s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock 2>/dev/null`)
-      composition = bom["compositions"].as_a.first
-      composition["aggregate"].should eq("incomplete")
-      # Every ref in the graph is covered by the assertion.
-      graph_refs = bom["dependencies"].as_a.map(&.["ref"].as_s)
-      composition["dependencies"].as_a.map(&.as_s).sort!.should eq(graph_refs.sort)
     end
 
     it "emits all shard.yml authors as structured contacts" do

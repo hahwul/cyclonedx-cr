@@ -1,0 +1,6 @@
+name: charlie
+version: 1.0.0
+# Depends back on the root project.
+dependencies:
+  graph-root:
+    github: owner/graph-root

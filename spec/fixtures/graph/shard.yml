@@ -1,0 +1,17 @@
+# Root of the dependency-graph fixtures. `lib/` is a complete install:
+#
+#   runtime: alpha -> charlie, bravo -> charlie   (diamond)
+#   dev:     delta -> charlie, delta -> echo      (charlie shared with runtime,
+#                                                  echo reachable only via dev)
+name: graph-root
+version: 1.0.0
+
+dependencies:
+  alpha:
+    github: owner/alpha
+  bravo:
+    github: owner/bravo
+
+development_dependencies:
+  delta:
+    github: owner/delta

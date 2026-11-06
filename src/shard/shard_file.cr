@@ -11,8 +11,13 @@ class ShardFile
   # The version of the project/shard. Optional because a `shard.yml` may omit it
   # (e.g. an application that is never published), in which case it stays nil and
   # the generated component simply carries no `version` — which is what
-  # CycloneDX means by an unknown version.
-  getter version : String?
+  # CycloneDX means by an unknown version. A blank `version: ""` means the same
+  # thing, so it reads as absent rather than producing an empty version.
+  @version : String?
+
+  def version : String?
+    @version.presence
+  end
 
   # Optional fields
   getter description : String?
@@ -46,12 +51,17 @@ class ShardFile
   end
 
   # Collects the keys of a `name -> source details` dependency mapping. A
-  # non-mapping node (or a non-string key) is not a dependency declaration, so
-  # it contributes nothing rather than raising.
+  # non-mapping node is not a dependency declaration, so it contributes nothing
+  # rather than raising. shards reads every key as a string, so a scalar key the
+  # YAML core schema types otherwise (`2048:`, `true:`) is still a name; only a
+  # null or blank key is dropped.
   private def dependency_names(node : YAML::Any?) : Set(String)
     names = Set(String).new
     if mapping = node.try(&.as_h?)
-      mapping.each_key { |key| key.as_s?.try { |s| names << s } }
+      mapping.each_key do |key|
+        next if key.as_a? || key.as_h?
+        key.raw.to_s.presence.try { |name| names << name }
+      end
     end
     names
   end

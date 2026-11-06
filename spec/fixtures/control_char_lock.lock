@@ -1,0 +1,5 @@
+version: 2.0
+shards:
+  evil:
+    github: "o/r/x\n::error::pwned"
+    version: 1.0.0

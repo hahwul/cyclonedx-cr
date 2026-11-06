@@ -116,4 +116,27 @@ describe ShardFile do
       shard.dev_dependency_names.should be_empty
     end
   end
+
+  describe "#runtime_dependency_names" do
+    it "reads scalar keys as names, as shards does, and drops null ones" do
+      yaml = <<-YAML
+        name: my-shard
+        dependencies:
+          2048:
+            github: o/n2048
+          true:
+            github: o/t
+          ~:
+            github: o/null
+        YAML
+
+      ShardFile.from_yaml(yaml).runtime_dependency_names.should eq(Set{"2048", "true"})
+    end
+  end
+
+  describe "#version" do
+    it "treats a blank version as absent" do
+      ShardFile.from_yaml(%(name: x\nversion: ""\n)).version.should be_nil
+    end
+  end
 end

@@ -1,0 +1,17 @@
+version: 2.0
+shards:
+  alpha:
+    github: owner/alpha
+    version: 1.0.0
+  bravo:
+    github: owner/bravo
+    version: 1.0.0
+  charlie:
+    github: owner/charlie
+    version: 1.0.0
+  delta:
+    github: owner/delta
+    version: 1.0.0
+  echo:
+    github: owner/echo
+    version: 1.0.0

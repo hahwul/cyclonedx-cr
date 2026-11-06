@@ -1,0 +1,5 @@
+version: 1.0
+shards:
+  echo:
+    github: owner/echo
+    version: 0.9.0

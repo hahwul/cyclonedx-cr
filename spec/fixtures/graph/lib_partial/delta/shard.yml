@@ -1,0 +1,11 @@
+name: delta
+version: 1.0.0
+dependencies:
+  charlie:
+    github: owner/charlie
+  echo:
+    github: owner/echo
+# Never installed for a dependency, so never an edge.
+development_dependencies:
+  foxtrot:
+    github: owner/foxtrot
