@@ -11,8 +11,13 @@ class ShardFile
   # The version of the project/shard. Optional because a `shard.yml` may omit it
   # (e.g. an application that is never published), in which case it stays nil and
   # the generated component simply carries no `version` — which is what
-  # CycloneDX means by an unknown version.
-  getter version : String?
+  # CycloneDX means by an unknown version. A blank `version: ""` means the same
+  # thing, so it reads as absent rather than producing an empty version.
+  @version : String?
+
+  def version : String?
+    @version.presence
+  end
 
   # Optional fields
   getter description : String?

@@ -31,9 +31,14 @@ class App
   SCOPE_REQUIRED = "required"
   SCOPE_OPTIONAL = "optional"
 
-  # `shard.lock` cannot express transitive edges, so the dependency graph is
-  # always declared incomplete. See `build_compositions`.
+  # Composition aggregates for the dependency graph. See `build_compositions`.
+  COMPOSITION_COMPLETE   = "complete"
   COMPOSITION_INCOMPLETE = "incomplete"
+  COMPOSITION_UNKNOWN    = "unknown"
+
+  # Where `shards install` puts dependencies, relative to the project, unless
+  # `SHARDS_INSTALL_PATH` says otherwise.
+  DEFAULT_INSTALL_DIR = "lib"
 
   # The structured `component.authors` array was introduced in 1.6.
   AUTHORS_MIN_VERSION = "1.6"
@@ -228,51 +233,109 @@ class App
   private def generate_bom(options : Options) : CycloneDX::BOM
     shard = read_yaml_file(options.shard_file, ShardFile)
     main_component = parse_main_component(shard, options.spec_version)
-    # A shard may be declared in BOTH `dependencies` and
-    # `development_dependencies`. It is still required at runtime, so runtime
-    # membership wins: marking such a component `optional` understates its
-    # scope and pushes a genuinely runtime-reachable component down in
-    # downstream vulnerability triage.
-    dev_dep_names = shard.dev_dependency_names - shard.runtime_dependency_names
-    dependencies = parse_dependencies(options.shard_lock_file, dev_dep_names)
-    dependencies = drop_root_collisions(dependencies, main_component.bom_ref)
+    main_ref = generate_bom_ref(shard.name, shard.version)
+    locked = locked_shards(options.shard_lock_file, main_ref)
+
+    # `shard.lock` is a flat list: it records what is installed, not which shard
+    # required which. The edges come from each installed shard's own shard.yml.
+    declared = installed_dependencies(locked.keys, install_path(options.shard_file))
+    direct = (shard.runtime_dependency_names | shard.dev_dependency_names).to_a
+    optional = dev_only_names(shard, declared)
+
+    dependencies = locked.map do |name, details|
+      build_dependency(name, details, optional.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED)
+    end
+    refs = locked.to_h { |name, details| {name, generate_bom_ref(name, details.version)} }
 
     tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
     metadata = CycloneDX::Metadata.new(
       component: main_component, tools: [tool], timestamp: bom_timestamp(options))
 
-    # Build dependency graph
-    dep_graph = build_dependency_graph(main_component, dependencies)
+    dep_graph, aggregates = build_dependency_graph(main_ref, direct, declared, refs)
 
     CycloneDX::BOM.new(
       spec_version: options.spec_version,
       metadata: metadata,
       components: dependencies,
       dependencies: dep_graph,
-      compositions: build_compositions(main_component, dependencies),
+      compositions: build_compositions(aggregates),
       serial_number: options.serial_number
     )
   end
 
-  # `shard.lock` is a flat list of resolved shards: it records *what* is
-  # installed but not which shard required which. The dependency graph therefore
-  # only knows the root's direct edges, and every other node is listed with no
-  # `dependsOn`.
-  #
-  # Left unqualified, a consumer cannot tell that apart from a genuinely complete
-  # graph of leaf dependencies. `compositions` is how CycloneDX expresses the
-  # difference, so the whole assembly is declared `incomplete`.
-  private def build_compositions(main_component : CycloneDX::Component,
-                                 dependencies : Array(CycloneDX::Component)) : Array(CycloneDX::Composition)?
-    refs = [] of String
-    main_component.bom_ref.try { |ref| refs << ref }
-    dependencies.each { |dep| dep.bom_ref.try { |ref| refs << ref } }
-    return if refs.empty?
+  # Groups the graph nodes by how much is known about their edges, so a consumer
+  # can tell a leaf apart from a shard whose dependencies could not be read.
+  # `complete` asserts no further edges exist; `incomplete` that some do (a
+  # declared dependency missing from shard.lock); `unknown` that it may be
+  # either (the shard's installed shard.yml was unavailable).
+  private def build_compositions(aggregates : Hash(String, String)) : Array(CycloneDX::Composition)?
+    groups = aggregates.keys.group_by { |ref| aggregates[ref] }
+    compositions = [COMPOSITION_COMPLETE, COMPOSITION_INCOMPLETE, COMPOSITION_UNKNOWN].compact_map do |aggregate|
+      groups[aggregate]?.try { |group_refs| CycloneDX::Composition.new(aggregate: aggregate, dependencies: group_refs) }
+    end
+    compositions unless compositions.empty?
+  end
 
-    [CycloneDX::Composition.new(
-      aggregate: COMPOSITION_INCOMPLETE,
-      dependencies: refs,
-    )]
+  # Where `shards install` put the dependencies: `SHARDS_INSTALL_PATH` when set
+  # (shards resolves it against the working directory, and so does this),
+  # otherwise `lib/` next to shard.yml.
+  private def install_path(shard_file : String) : String
+    ENV["SHARDS_INSTALL_PATH"]?.presence || File.join(File.dirname(shard_file), DEFAULT_INSTALL_DIR)
+  end
+
+  # name => the runtime dependencies declared by that shard's installed
+  # shard.yml, or nil when it could not be read. shards installs only a
+  # dependency's `dependencies`, never its `development_dependencies`, so those
+  # are its edges.
+  private def installed_dependencies(names : Array(String), install_dir : String) : Hash(String, Array(String)?)
+    declared = {} of String => Array(String)?
+    if !names.empty? && !Dir.exists?(install_dir)
+      STDERR.puts "Warning: `#{install_dir}` not found; run `shards install` to record transitive dependencies. Their dependency graph is reported as unknown."
+      names.each { |name| declared[name] = nil }
+      return declared
+    end
+
+    names.each do |name|
+      path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
+      declared[name] = begin
+        File.open(path) { |file| ShardFile.from_yaml(file) }.runtime_dependency_names.to_a
+      rescue File::Error | YAML::ParseException
+        STDERR.puts "Warning: could not read `#{path}`; the dependencies of `#{name}` are unknown."
+        nil
+      end
+    end
+    declared
+  end
+
+  # The locked shards reachable only through `development_dependencies`.
+  #
+  # Anything a runtime dependency pulls in, directly or transitively, stays
+  # required even when a dev dependency also needs it: marking it `optional`
+  # would understate its scope and push it down in vulnerability triage. For the
+  # same reason a shard is only called dev-only when the runtime side of the
+  # graph is fully known; otherwise only direct dev dependencies are.
+  private def dev_only_names(shard : ShardFile, declared : Hash(String, Array(String)?)) : Set(String)
+    runtime, runtime_known = reachable(shard.runtime_dependency_names, declared)
+    dev_roots = shard.dev_dependency_names
+    dev = runtime_known ? reachable(dev_roots, declared)[0] : dev_roots
+    dev - runtime
+  end
+
+  # Every shard name reachable from `roots`, and whether every edge on the way
+  # was known (each name is locked and its shard.yml was read).
+  private def reachable(roots : Set(String), declared : Hash(String, Array(String)?)) : {Set(String), Bool}
+    seen = Set(String).new
+    known = true
+    queue = roots.to_a
+    while name = queue.shift?
+      next unless seen.add?(name)
+      if deps = declared[name]?
+        queue.concat(deps)
+      else
+        known = false
+      end
+    end
+    {seen, known}
   end
 
   # The BOM timestamp. Fixed to the Unix epoch under `--reproducible` so two
@@ -476,29 +539,41 @@ class App
     end
   end
 
-  # Parses dependency components from `shard.lock`.
-  private def parse_dependencies(file_path : String, dev_dep_names : Set(String)) : Array(CycloneDX::Component)
+  # Reads the locked shards from `shard.lock`, dropping entries that cannot
+  # become a valid component.
+  #
+  # A component name is required and must be non-empty, so a blank lock key is
+  # skipped. An entry whose bom-ref equals the root component's is skipped too:
+  # the root lives in `metadata.component`, and a second component under the
+  # same bom-ref violates the CycloneDX uniqueness constraint (the XSD enforces
+  # it) and is semantically a self-reference. That happens when a `shard.lock`
+  # re-lists the project itself, or a dependency shares its exact name@version.
+  private def locked_shards(file_path : String, main_ref : String) : Hash(String, ShardLockEntry)
     lock_file = read_yaml_file(file_path, ShardLockFile)
 
-    lock_file.shards.compact_map do |name, details|
-      # A component name is required and must be non-empty; an empty/blank lock
-      # key would yield a schema-invalid component, so skip it with a warning.
+    lock_file.shards.reject do |name, details|
       if name.blank?
         STDERR.puts "Warning: skipping lock entry with an empty shard name."
-        next
+        true
+      elsif generate_bom_ref(name, details.version) == main_ref
+        STDERR.puts "Warning: skipping lock entry that duplicates the root component ref '#{main_ref}'."
+        true
+      else
+        false
       end
-
-      scope = dev_dep_names.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED
-
-      CycloneDX::Component.new(
-        name: name,
-        version: details.version,
-        purl: generate_purl(details),
-        bom_ref: generate_bom_ref(name, details.version),
-        scope: scope,
-        external_references: dependency_external_refs(details)
-      )
     end
+  end
+
+  # Builds the component for one locked shard.
+  private def build_dependency(name : String, details : ShardLockEntry, scope : String) : CycloneDX::Component
+    CycloneDX::Component.new(
+      name: name,
+      version: details.version,
+      purl: generate_purl(details),
+      bom_ref: generate_bom_ref(name, details.version),
+      scope: scope,
+      external_references: dependency_external_refs(details)
+    )
   end
 
   # Records where a locked dependency came from.
@@ -534,52 +609,41 @@ class App
     details.git || details.hg || details.fossil
   end
 
-  # Drops any locked dependency whose bom-ref equals the root component's
-  # bom-ref. The root component lives in `metadata.component`; emitting a second
-  # component in the `components` array under the same bom-ref produces a
-  # duplicate identifier, which violates the CycloneDX bom-ref uniqueness
-  # constraint (the XSD enforces it) and is semantically a self-reference. This
-  # happens when a `shard.lock` re-lists the project itself, or when a
-  # dependency coincidentally shares the project's exact name@version.
-  private def drop_root_collisions(dependencies : Array(CycloneDX::Component),
-                                   main_ref : String?) : Array(CycloneDX::Component)
-    return dependencies unless main_ref
-    kept = dependencies.reject(&.bom_ref.== main_ref)
-    if kept.size < dependencies.size
-      STDERR.puts "Warning: skipping lock entry that duplicates the root component ref '#{main_ref}'."
-    end
-    kept
-  end
-
-  # Builds the dependency graph for the BOM.
-  # The main component depends on all listed dependencies.
-  # Each dependency has an empty dependsOn list (transitive deps not available from shard.lock).
-  private def build_dependency_graph(main_component : CycloneDX::Component,
-                                     dependencies : Array(CycloneDX::Component)) : Array(CycloneDX::Dependency)
+  # Builds the dependency graph and, per node, the composition aggregate that
+  # describes how complete its edges are (see `build_compositions`).
+  #
+  # The root's edges are its direct dependencies from shard.yml; each locked
+  # shard's are the ones its installed shard.yml declares. A shard whose
+  # shard.yml could not be read is left out of the graph: the spec reads a
+  # component absent from the graph as having unknown dependencies, while an
+  # empty `dependsOn` asserts it has none.
+  private def build_dependency_graph(main_ref : String, direct : Array(String),
+                                     declared : Hash(String, Array(String)?),
+                                     refs : Hash(String, String)) : {Array(CycloneDX::Dependency), Hash(String, String)}
     graph = [] of CycloneDX::Dependency
-    seen = Set(String).new
+    aggregates = {} of String => String
 
-    main_ref = main_component.bom_ref
+    nodes = [{main_ref, direct}] of {String, Array(String)?}
+    refs.each { |name, ref| nodes << {ref, declared[name]?} }
 
-    # Main component depends on all dependencies. De-duplicate the refs and drop
-    # the main component's own ref so the graph never contains a self-edge (this
-    # can happen if a locked dependency shares the project's name@version).
-    if main_ref
-      dep_refs = dependencies.compact_map(&.bom_ref).reject { |r| r == main_ref }.uniq!
-      graph << CycloneDX::Dependency.new(ref: main_ref, depends_on: dep_refs)
-      seen << main_ref
-    end
-
-    # Each dependency listed once with an empty dependsOn.
-    dependencies.each do |dep|
-      if ref = dep.bom_ref
-        next if seen.includes?(ref)
-        seen << ref
-        graph << CycloneDX::Dependency.new(ref: ref)
+    nodes.each do |(ref, deps)|
+      unless deps
+        aggregates[ref] = COMPOSITION_UNKNOWN
+        next
       end
+
+      missing = deps.reject { |dep| refs.has_key?(dep) }
+      missing.each do |dep|
+        STDERR.puts "Warning: `#{ref}` depends on `#{dep}`, which is not in shard.lock."
+      end
+      aggregates[ref] = missing.empty? ? COMPOSITION_COMPLETE : COMPOSITION_INCOMPLETE
+
+      # A shard listing itself is not an edge.
+      depends_on = deps.compact_map { |dep| refs[dep]? }.reject(ref).uniq!
+      graph << CycloneDX::Dependency.new(ref: ref, depends_on: depends_on)
     end
 
-    graph
+    {graph, aggregates}
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.

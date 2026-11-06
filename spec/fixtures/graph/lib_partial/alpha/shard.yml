@@ -1,0 +1,7 @@
+name: alpha
+version: 1.0.0
+dependencies:
+  charlie:
+    github: owner/charlie
+  ghost:
+    github: owner/ghost

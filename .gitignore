@@ -1,6 +1,6 @@
 # Crystal
 bin/
-lib
+/lib/
 *.dwarf
 
 # SBOM

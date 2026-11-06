@@ -23,8 +23,14 @@ class ShardLockEntry
 
   # The version of the locked dependency. Absent for `path:` entries (and some
   # other lock shapes), in which case it stays nil rather than being filled in
-  # with a placeholder: no version is a fact, "unknown" is a fabrication.
-  getter version : String?
+  # with a placeholder: no version is a fact, "unknown" is a fabrication. A blank
+  # `version: ""` is the same fact.
+  @version : String?
+
+  def version : String?
+    @version.presence
+  end
+
   # The Git URL if the dependency is sourced from a Git repository.
   getter git : String?
   # The Mercurial repository URL.

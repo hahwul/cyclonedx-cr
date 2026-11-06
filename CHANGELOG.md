@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The dependency graph is now real. The root component depends only on its
+  direct dependencies from `shard.yml`, instead of on every locked shard, and
+  each locked shard carries the edges declared by its installed
+  `lib/<name>/shard.yml` (honouring `SHARDS_INSTALL_PATH`).
+- `compositions` now says per node how complete its edges are: `complete` when
+  everything was read, `incomplete` when a shard declares a dependency missing
+  from `shard.lock`, `unknown` when its `shard.yml` is not installed. Unknown
+  shards are left out of the `dependencies` graph rather than listed as leaves.
+  Previously the whole graph was always `incomplete`.
+- Shards reachable only through `development_dependencies` are now `optional`
+  transitively, not just the direct ones; anything a runtime dependency reaches
+  stays `required`.
+
+### Fixed
+- An empty `version: ""` in `shard.yml` or `shard.lock` is treated as absent
+  instead of aborting with "the generated SBOM is not valid CycloneDX".
+
 ## v1.4.0
 
 The theme of this release is spec fidelity. The official CycloneDX JSON schemas
