@@ -93,7 +93,9 @@ By default every run gets a fresh `serialNumber` and the current time as its
 `metadata.timestamp`, so two SBOMs for the same project never compare equal.
 `--reproducible` pins both — the timestamp to the Unix epoch and the serial
 number to the nil UUID — which is what you want when the SBOM is committed to the
-repository, signed, or diffed between builds:
+repository, signed, or diffed between builds. The installed `lib/` is an input
+too (it supplies the [dependency graph](#dependency-graph)), so generate the SBOM
+after `shards install` everywhere you compare it:
 
 ```bash
 cyclonedx-cr --reproducible -o sbom.json
@@ -143,6 +145,12 @@ jobs:
       # Checkout the repository code
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # Install the shards so the SBOM records the full dependency graph
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install dependencies
+        run: shards install
 
       # Generate SBOM using hahwul/cyclonedx-cr action
       - name: Generate SBOM
@@ -237,9 +245,12 @@ about its edges:
 | `incomplete` | The shard declares a dependency that is missing from `shard.lock` (an out-of-sync install). |
 | `unknown` | The shard's `shard.yml` could not be read, so its edges are unknown. The shard is left out of the `dependencies` graph, since an empty `dependsOn` would claim it has none. |
 
-Anything short of `complete` is also reported on stderr. While part of the graph
-is unknown, only direct development dependencies are marked `optional`: a shard
-cannot be shown to be dev-only if an unseen edge might reach it at runtime.
+Anything short of `complete` is also reported on stderr, including a shard whose
+installed version (per `lib/.shards.info`) differs from the one `shard.lock` pins:
+its edges would be the wrong ones, so they are reported as `unknown`. While part
+of the runtime graph is unknown, only direct development dependencies are marked
+`optional`: a transitive shard cannot be shown to be dev-only if an unseen edge
+might reach it at runtime.
 
 ## Contributing
 

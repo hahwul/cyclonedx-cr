@@ -26,6 +26,10 @@ end
 
 assert_binary_is_current!
 
+# Every example spawns the binary, which honours `SHARDS_INSTALL_PATH`; one set
+# in the developer's or CI environment would redirect the fixtures' `lib/`.
+ENV.delete("SHARDS_INSTALL_PATH")
+
 # Runs the binary against the PURL-canonicalization fixture and returns a
 # name => purl map for the emitted components.
 private def canon_purls : Hash(String, String)
@@ -575,18 +579,25 @@ describe "App Integration" do
 
     it "reports unreadable and out-of-sync shards honestly" do
       json, err = run_graph("#{GRAPH}/lib_partial")
-      err.should contain("lib_partial/bravo/shard.yml`; the dependencies of `bravo` are unknown")
+      err.should contain("lib_partial/bravo/shard.yml` (")
+      err.should contain("the dependencies of `bravo` are unknown")
       err.should contain("`alpha@1.0.0` depends on `ghost`, which is not in shard.lock")
+      err.should contain("installed `echo` is 0.9.0 but shard.lock pins 1.0.0")
+      err.should_not contain("graph-root`")
       bom = JSON.parse(json)
 
-      # bravo is absent from the graph rather than listed as a leaf: an empty
-      # dependsOn would assert it has no dependencies.
+      # bravo (not installed) and echo (stale install) are absent from the graph
+      # rather than listed as leaves: an empty dependsOn would assert they have
+      # no dependencies.
       edges(bom).has_key?("bravo@1.0.0").should be_false
+      edges(bom).has_key?("echo@1.0.0").should be_false
       edges(bom)["alpha@1.0.0"].should eq(["charlie@1.0.0"])
+      # An edge back to the root project resolves to the root component.
+      edges(bom)["charlie@1.0.0"].should eq(["graph-root@1.0.0"])
       aggregates(bom).should eq({
-        "complete"   => ["graph-root@1.0.0", "charlie@1.0.0", "delta@1.0.0", "echo@1.0.0"],
+        "complete"   => ["graph-root@1.0.0", "charlie@1.0.0", "delta@1.0.0"],
         "incomplete" => ["alpha@1.0.0"],
-        "unknown"    => ["bravo@1.0.0"],
+        "unknown"    => ["bravo@1.0.0", "echo@1.0.0"],
       })
       # bravo's edges are unknown, so echo cannot be shown to be dev-only; the
       # direct dev dependency stays optional.
@@ -622,6 +633,14 @@ describe "App Integration" do
       if SchemaValidation::XMLLINT.nil? && SchemaValidation::JSON_VALIDATOR.nil?
         pending!("neither xmllint nor check-jsonschema is installed")
       end
+    end
+  end
+
+  describe "warnings" do
+    it "escapes control characters so a name cannot forge a CI workflow command" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/control_char_lock.lock 2>&1 >/dev/null`
+      output.should contain("malformed repository shorthand 'o/r/x\\n::error::pwned'")
+      output.lines.none?(&.starts_with?("::")).should be_true
     end
   end
 

@@ -9,9 +9,12 @@
   `lib/<name>/shard.yml` (honouring `SHARDS_INSTALL_PATH`).
 - `compositions` now says per node how complete its edges are: `complete` when
   everything was read, `incomplete` when a shard declares a dependency missing
-  from `shard.lock`, `unknown` when its `shard.yml` is not installed. Unknown
-  shards are left out of the `dependencies` graph rather than listed as leaves.
-  Previously the whole graph was always `incomplete`.
+  from `shard.lock`, `unknown` when its `shard.yml` is not installed or
+  `lib/.shards.info` shows a different version installed than the lock pins.
+  Unknown shards are left out of the `dependencies` graph rather than listed as
+  leaves. Previously the whole graph was always `incomplete`.
+- Generate the SBOM after `shards install`: the README's GitHub Actions example
+  and this repository's release workflow now do.
 - Shards reachable only through `development_dependencies` are now `optional`
   transitively, not just the direct ones; anything a runtime dependency reaches
   stays `required`.
@@ -19,6 +22,11 @@
 ### Fixed
 - An empty `version: ""` in `shard.yml` or `shard.lock` is treated as absent
   instead of aborting with "the generated SBOM is not valid CycloneDX".
+- Warnings escape control characters, so a shard name or source carrying a
+  newline cannot start a line that CI runners parse as a workflow command.
+- SPDX expressions built from unknown ids keep falling back to a license `name`
+  with the next spdx.cr release, which reports unknown ids as errors rather than
+  warnings.
 
 ## v1.4.0
 

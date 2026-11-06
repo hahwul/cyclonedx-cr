@@ -14,6 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # Install the shards so the SBOM records the full dependency graph
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install dependencies
+        run: shards install
+
       # Generate SBOM using hahwul/cyclonedx-cr action
       - name: Generate SBOM
         uses: hahwul/cyclonedx-cr@v1.4.0

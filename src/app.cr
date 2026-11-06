@@ -127,13 +127,21 @@ class App
     valid = validator.validate(bom)
 
     validator.warnings.each do |warning|
-      STDERR.puts "Warning: #{warning}"
+      warn(warning.to_s)
     end
     return true if valid
 
     STDERR.puts "Error: the generated SBOM is not valid CycloneDX:"
     validator.errors.each { |error| STDERR.puts "  - #{error}" }
     false
+  end
+
+  # Prints a warning on stderr. Control characters are escaped: the message can
+  # carry names from shard.lock and from third-party installed shard.yml files,
+  # and a raw newline would let one start a line of its own, which CI runners
+  # such as GitHub Actions parse as a workflow command (`::add-mask::...`).
+  private def warn(message : String) : Nil
+    STDERR.puts "Warning: #{message.gsub(/[[:cntrl:]]/, &.dump_unquoted)}"
   end
 
   # Parses command-line options and returns an Options record.
@@ -152,7 +160,7 @@ class App
       parser.on("-o FILE", "--output=FILE", "Output file path (default: stdout)") { |file| output_file = file }
       parser.on("--spec-version VERSION", "CycloneDX spec version (options: #{SUPPORTED_VERSIONS.join(", ")}, default: #{DEFAULT_VERSION})") { |v| spec_version = v }
       parser.on("--output-format FORMAT", "Output format (options: #{SUPPORTED_FORMATS.join(", ")}, default: #{DEFAULT_FORMAT})") { |format| output_format = format.downcase }
-      parser.on("--reproducible", "Pin the timestamp and serial number so repeated runs over unchanged inputs produce identical output") { reproducible = true }
+      parser.on("--reproducible", "Pin the timestamp and serial number so repeated runs over unchanged inputs (shard.yml, shard.lock, installed lib/) produce identical output") { reproducible = true }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -238,20 +246,20 @@ class App
 
     # `shard.lock` is a flat list: it records what is installed, not which shard
     # required which. The edges come from each installed shard's own shard.yml.
-    declared = installed_dependencies(locked.keys, install_path(options.shard_file))
+    declared = installed_dependencies(locked, install_path(options.shard_file))
     direct = (shard.runtime_dependency_names | shard.dev_dependency_names).to_a
     optional = dev_only_names(shard, declared)
 
-    dependencies = locked.map do |name, details|
-      build_dependency(name, details, optional.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED)
-    end
     refs = locked.to_h { |name, details| {name, generate_bom_ref(name, details.version)} }
+    dependencies = locked.map do |name, details|
+      build_dependency(name, details, refs[name], optional.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED)
+    end
 
     tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
     metadata = CycloneDX::Metadata.new(
       component: main_component, tools: [tool], timestamp: bom_timestamp(options))
 
-    dep_graph, aggregates = build_dependency_graph(main_ref, direct, declared, refs)
+    dep_graph, aggregates = build_dependency_graph(shard.name, main_ref, direct, declared, refs)
 
     CycloneDX::BOM.new(
       spec_version: options.spec_version,
@@ -268,12 +276,8 @@ class App
   # `complete` asserts no further edges exist; `incomplete` that some do (a
   # declared dependency missing from shard.lock); `unknown` that it may be
   # either (the shard's installed shard.yml was unavailable).
-  private def build_compositions(aggregates : Hash(String, String)) : Array(CycloneDX::Composition)?
-    groups = aggregates.keys.group_by { |ref| aggregates[ref] }
-    compositions = [COMPOSITION_COMPLETE, COMPOSITION_INCOMPLETE, COMPOSITION_UNKNOWN].compact_map do |aggregate|
-      groups[aggregate]?.try { |group_refs| CycloneDX::Composition.new(aggregate: aggregate, dependencies: group_refs) }
-    end
-    compositions unless compositions.empty?
+  private def build_compositions(aggregates : Hash(String, Array(String))) : Array(CycloneDX::Composition)
+    aggregates.map { |aggregate, refs| CycloneDX::Composition.new(aggregate: aggregate, dependencies: refs) }
   end
 
   # Where `shards install` put the dependencies: `SHARDS_INSTALL_PATH` when set
@@ -284,27 +288,48 @@ class App
   end
 
   # name => the runtime dependencies declared by that shard's installed
-  # shard.yml, or nil when it could not be read. shards installs only a
+  # shard.yml, or nil when they are unknown. shards installs only a
   # dependency's `dependencies`, never its `development_dependencies`, so those
   # are its edges.
-  private def installed_dependencies(names : Array(String), install_dir : String) : Hash(String, Array(String)?)
+  private def installed_dependencies(locked : Hash(String, ShardLockEntry), install_dir : String) : Hash(String, Array(String)?)
     declared = {} of String => Array(String)?
-    if !names.empty? && !Dir.exists?(install_dir)
-      STDERR.puts "Warning: `#{install_dir}` not found; run `shards install` to record transitive dependencies. Their dependency graph is reported as unknown."
-      names.each { |name| declared[name] = nil }
+    if !locked.empty? && !Dir.exists?(install_dir)
+      warn("`#{install_dir}` not found; run `shards install` to record transitive dependencies. Their dependency graph is reported as unknown.")
+      locked.each_key { |name| declared[name] = nil }
       return declared
     end
 
-    names.each do |name|
-      path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
-      declared[name] = begin
-        File.open(path) { |file| ShardFile.from_yaml(file) }.runtime_dependency_names.to_a
-      rescue File::Error | YAML::ParseException
-        STDERR.puts "Warning: could not read `#{path}`; the dependencies of `#{name}` are unknown."
-        nil
-      end
+    installed = installed_versions(install_dir)
+    locked.each do |name, details|
+      declared[name] = installed_shard_dependencies(name, details, install_dir, installed)
     end
     declared
+  end
+
+  # The edges of one installed shard, or nil (with a warning) when they cannot
+  # be trusted: its shard.yml is unreadable, or shards recorded installing a
+  # different version than shard.lock pins (a stale `lib/`, e.g. a CI cache
+  # restored from an older lock), whose edges would be the wrong ones.
+  private def installed_shard_dependencies(name : String, details : ShardLockEntry, install_dir : String,
+                                           installed : Hash(String, ShardLockEntry)) : Array(String)?
+    path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
+    if (stale = installed[name]?.try(&.version)) && stale != details.version
+      warn("installed `#{name}` is #{stale} but shard.lock pins #{details.version}; run `shards install`. Its dependencies are unknown.")
+      return
+    end
+
+    File.open(path) { |file| ShardFile.from_yaml(file) }.runtime_dependency_names.to_a
+  rescue ex : IO::Error | YAML::ParseException
+    warn("could not read `#{path}` (#{ex.message}); the dependencies of `#{name}` are unknown.")
+    nil
+  end
+
+  # What shards recorded installing (`<install dir>/.shards.info`, same shape as
+  # shard.lock), or nothing when that file is absent or unreadable.
+  private def installed_versions(install_dir : String) : Hash(String, ShardLockEntry)
+    File.open(File.join(install_dir, ".shards.info")) { |file| ShardLockFile.from_yaml(file) }.shards
+  rescue IO::Error | YAML::ParseException
+    {} of String => ShardLockEntry
   end
 
   # The locked shards reachable only through `development_dependencies`.
@@ -313,7 +338,8 @@ class App
   # required even when a dev dependency also needs it: marking it `optional`
   # would understate its scope and push it down in vulnerability triage. For the
   # same reason a shard is only called dev-only when the runtime side of the
-  # graph is fully known; otherwise only direct dev dependencies are.
+  # graph is fully known. Direct development dependencies are optional either
+  # way: shard.yml declares them so, which is what this tool has always reported.
   private def dev_only_names(shard : ShardFile, declared : Hash(String, Array(String)?)) : Set(String)
     runtime, runtime_known = reachable(shard.runtime_dependency_names, declared)
     dev_roots = shard.dev_dependency_names
@@ -326,7 +352,7 @@ class App
   private def reachable(roots : Set(String), declared : Hash(String, Array(String)?)) : {Set(String), Bool}
     seen = Set(String).new
     known = true
-    queue = roots.to_a
+    queue = Deque.new(roots.to_a)
     while name = queue.shift?
       next unless seen.add?(name)
       if deps = declared[name]?
@@ -452,7 +478,11 @@ class App
   # warning), so they are intentionally accepted.
   private def valid_spdx_expression?(license : String) : Bool
     return false unless Spdx.valid_expression?(license)
-    Spdx.validate_expression(license).warnings.none?(&.starts_with?("Unknown"))
+    # spdx.cr reports unknown ids as "Unknown ..." warnings in the pinned
+    # release and as errors (making `valid?` false) from the next one; this
+    # holds for both.
+    result = Spdx.validate_expression(license)
+    result.valid? && result.warnings.none?(&.starts_with?("Unknown"))
   rescue Spdx::ParseError
     false
   end
@@ -553,10 +583,10 @@ class App
 
     lock_file.shards.reject do |name, details|
       if name.blank?
-        STDERR.puts "Warning: skipping lock entry with an empty shard name."
+        warn("skipping lock entry with an empty shard name.")
         true
       elsif generate_bom_ref(name, details.version) == main_ref
-        STDERR.puts "Warning: skipping lock entry that duplicates the root component ref '#{main_ref}'."
+        warn("skipping lock entry that duplicates the root component ref '#{main_ref}'.")
         true
       else
         false
@@ -565,12 +595,12 @@ class App
   end
 
   # Builds the component for one locked shard.
-  private def build_dependency(name : String, details : ShardLockEntry, scope : String) : CycloneDX::Component
+  private def build_dependency(name : String, details : ShardLockEntry, ref : String, scope : String) : CycloneDX::Component
     CycloneDX::Component.new(
       name: name,
       version: details.version,
       purl: generate_purl(details),
-      bom_ref: generate_bom_ref(name, details.version),
+      bom_ref: ref,
       scope: scope,
       external_references: dependency_external_refs(details)
     )
@@ -617,33 +647,38 @@ class App
   # shard.yml could not be read is left out of the graph: the spec reads a
   # component absent from the graph as having unknown dependencies, while an
   # empty `dependsOn` asserts it has none.
-  private def build_dependency_graph(main_ref : String, direct : Array(String),
+  #
+  # A dependency may depend back on the root project (a spec helper for it, say),
+  # so the root's name resolves to its ref too unless a locked shard claims it.
+  private def build_dependency_graph(main_name : String, main_ref : String, direct : Array(String),
                                      declared : Hash(String, Array(String)?),
-                                     refs : Hash(String, String)) : {Array(CycloneDX::Dependency), Hash(String, String)}
+                                     refs : Hash(String, String)) : {Array(CycloneDX::Dependency), Hash(String, Array(String))}
     graph = [] of CycloneDX::Dependency
-    aggregates = {} of String => String
+    # aggregate => refs, in the order the compositions are emitted.
+    aggregates = {COMPOSITION_COMPLETE, COMPOSITION_INCOMPLETE, COMPOSITION_UNKNOWN}.to_h { |aggregate| {aggregate, [] of String} }
+    lookup = {main_name => main_ref}.merge(refs)
 
     nodes = [{main_ref, direct}] of {String, Array(String)?}
     refs.each { |name, ref| nodes << {ref, declared[name]?} }
 
     nodes.each do |(ref, deps)|
       unless deps
-        aggregates[ref] = COMPOSITION_UNKNOWN
+        aggregates[COMPOSITION_UNKNOWN] << ref
         next
       end
 
-      missing = deps.reject { |dep| refs.has_key?(dep) }
+      missing = deps.reject { |dep| lookup.has_key?(dep) }
       missing.each do |dep|
-        STDERR.puts "Warning: `#{ref}` depends on `#{dep}`, which is not in shard.lock."
+        warn("`#{ref}` depends on `#{dep}`, which is not in shard.lock.")
       end
-      aggregates[ref] = missing.empty? ? COMPOSITION_COMPLETE : COMPOSITION_INCOMPLETE
+      aggregates[missing.empty? ? COMPOSITION_COMPLETE : COMPOSITION_INCOMPLETE] << ref
 
       # A shard listing itself is not an edge.
-      depends_on = deps.compact_map { |dep| refs[dep]? }.reject(ref).uniq!
+      depends_on = deps.compact_map { |dep| lookup[dep]? }.reject(ref).uniq!
       graph << CycloneDX::Dependency.new(ref: ref, depends_on: depends_on)
     end
 
-    {graph, aggregates}
+    {graph, aggregates.reject { |_, group| group.empty? }}
   end
 
   # Generates a Package URL (PURL) for a given shard based on its details.
@@ -694,7 +729,7 @@ class App
   private def shorthand_repo_path(value : String, min_segments : Int32,
                                   max_segments : Int32 = Int32::MAX) : String?
     path = clean_repo_path(value, min_segments, max_segments)
-    STDERR.puts "Warning: skipping PURL for malformed repository shorthand '#{value}'." unless path
+    warn("skipping PURL for malformed repository shorthand '#{value}'.") unless path
     path
   end
 

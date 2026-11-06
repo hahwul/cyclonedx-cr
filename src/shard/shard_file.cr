@@ -51,12 +51,17 @@ class ShardFile
   end
 
   # Collects the keys of a `name -> source details` dependency mapping. A
-  # non-mapping node (or a non-string key) is not a dependency declaration, so
-  # it contributes nothing rather than raising.
+  # non-mapping node is not a dependency declaration, so it contributes nothing
+  # rather than raising. shards reads every key as a string, so a scalar key the
+  # YAML core schema types otherwise (`2048:`, `true:`) is still a name; only a
+  # null or blank key is dropped.
   private def dependency_names(node : YAML::Any?) : Set(String)
     names = Set(String).new
     if mapping = node.try(&.as_h?)
-      mapping.each_key { |key| key.as_s?.try { |s| names << s } }
+      mapping.each_key do |key|
+        next if key.as_a? || key.as_h?
+        key.raw.to_s.presence.try { |name| names << name }
+      end
     end
     names
   end
