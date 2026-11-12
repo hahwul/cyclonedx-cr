@@ -312,6 +312,13 @@ class App
   # restored from an older lock), whose edges would be the wrong ones.
   private def installed_shard_dependencies(name : String, details : ShardLockEntry, install_dir : String,
                                            installed : Hash(String, ShardLockEntry)) : Array(String)?
+    # The name comes from shard.lock; one that is not a single path segment
+    # (`../x`, `a/b`) is not a directory shards could have installed to, and a
+    # NUL byte cannot be in a path at all.
+    if name.matches?(/[\/\\\0]/) || name.in?(".", "..")
+      warn("`#{name}` is not a valid shard name; its dependencies are unknown.")
+      return
+    end
     path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
     if (stale = installed[name]?.try(&.version)) && stale != details.version
       warn("installed `#{name}` is #{stale} but shard.lock pins #{details.version}; run `shards install`. Its dependencies are unknown.")
@@ -426,15 +433,15 @@ class App
     version ? "#{name}@#{version}" : name
   end
 
-  # Simple URL validation pattern (http/https/git schemes)
-  private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|git@.+)\z/
+  # Simple URL validation pattern (http/https/git/ssh schemes)
+  private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|ssh:\/\/.+|git@.+)\z/
 
   # scp-style git remote: `user@host:path` (no scheme). This is NOT a valid URI
   # so it cannot be emitted verbatim as a CycloneDX externalReference `url`
   # (the XSD validates it as `xs:anyURI`). The capture groups are the user, host
   # and path. The `(?!\/)` lookahead skips a `:/...` shape so an already-URI-ish
   # value is left untouched. Only `git@`-form URLs (per `URL_PATTERN`) ever reach
-  # this; `ssh://...` remotes are not emitted as external references at all.
+  # this.
   private SCP_GIT_PATTERN = /\A([\w.\-]+)@([\w.\-]+):(?!\/)(.+)\z/
 
   # SPDX license expression operators
@@ -551,22 +558,49 @@ class App
   end
 
   # Builds an external reference for a shard.yml URL field, or nil when the URL
-  # is missing or not a recognised http/https/git form. The URL is normalised so
-  # the emitted `url` is always a valid URI (see `normalize_url`).
+  # is missing, not a recognised http/https/git/ssh form, or cannot be cleaned
+  # (see `normalize_url`).
   private def build_external_reference(ref_type : String, url : String?) : CycloneDX::ExternalReference?
     return unless url && url =~ URL_PATTERN
-    CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalize_url(url))
+    vcs = ref_type == REF_TYPE_VCS
+    normalized = normalize_url(url, vcs) || return
+    # A remote's query or fragment means nothing to git, but `?private_token=`
+    # is a way to authenticate, so neither is published. A website keeps them.
+    normalized = strip_url_query_fragment(normalized) if vcs
+    CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalized)
   end
 
   # Rewrites an scp-style git remote (`git@host:owner/repo.git`) to its
   # equivalent `ssh://git@host/owner/repo.git` URI so the value is a valid
-  # CycloneDX externalReference `url`. All other URLs are returned unchanged.
-  private def normalize_url(url : String) : String
+  # CycloneDX externalReference `url`.
+  #
+  # Credentials are dropped: a private dependency is often declared as
+  # `https://<token>@host/...` or `https://user:<token>@host/...`, shard.lock
+  # keeps that URL verbatim, and an SBOM is a document meant to be published.
+  # Over ssh the user is the account to log in as (`git@`), not a secret, so
+  # only a password is removed there.
+  #
+  # nil when the URL cannot be parsed (a bad port), or when an `@` is left
+  # outside the userinfo once it is parsed: the parser ends the userinfo at the
+  # first `@`, and the authority at the first `/`, `?` or `#`, so a secret
+  # holding one of those (`user:p@ss@host`, `https://ab/cd@host`) would be
+  # emitted as the host or path. A `remote` (a vcs URL) has no other use for an
+  # `@`; a website path can (`https://medium.com/@user`), so only its host is
+  # checked.
+  private def normalize_url(url : String, remote : Bool) : String?
     if m = url.match(SCP_GIT_PATTERN)
-      "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
-    else
-      url
+      url = "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
     end
+
+    uri = URI.parse(url)
+    rest = remote ? {uri.host, uri.path, uri.query, uri.fragment} : {uri.host}
+    return if rest.any?(&.try(&.includes?('@')))
+    return url unless uri.user || uri.password
+    uri.password = nil
+    uri.user = nil unless uri.scheme == "ssh"
+    uri.to_s
+  rescue URI::Error | OverflowError # a port too big for Int32
+    nil
   end
 
   # Reads the locked shards from `shard.lock`, dropping entries that cannot
@@ -709,15 +743,25 @@ class App
   # `pkg:github`, `pkg:gitlab` and `pkg:bitbucket` define the version as a tag or
   # a commit. shards records `X.Y.Z+git.commit.<sha>` when the locked commit is
   # not a released tag, and that composite string resolves to neither, so the
-  # embedded SHA is used instead. A plain `X.Y.Z` is left alone; it is the tag
-  # (modulo a `v` prefix, which the forges resolve either way).
+  # embedded SHA is used instead. A plain `X.Y.Z` names the release, and shards
+  # only ever installs a release from the tag `vX.Y.Z` (its git resolver maps a
+  # version to `GitTagRef.new "v#{version}"`), so that is the tag the PURL names.
+  # The forges do not resolve `X.Y.Z` to `vX.Y.Z`: the bare form is a 404.
   #
-  # A `version: 1.0` lock file instead names the reference directly, so `tag:` is
-  # the last fallback. `branch:` deliberately is not: a branch name is neither a
-  # tag nor a commit, and it identifies a moving target rather than the tree that
+  # A `version: 1.0` lock file may instead name the reference directly; an
+  # explicit `tag:` is the literal tag, so it wins over the one derived from
+  # `version`. `branch:` is never used: a branch name is neither a tag nor a
+  # commit, and it identifies a moving target rather than the tree that
   # was actually installed.
   private def purl_version(details : ShardLockEntry) : String?
-    details.commit || details.version || details.tag
+    details.commit || details.tag || details.version.try { |version| release_tag(version) }
+  end
+
+  # The tag shards installs `version` from. A `+` means build metadata the
+  # commit pattern did not recognise; that string is no release, so it is kept
+  # as it is rather than turned into a tag name that cannot exist.
+  private def release_tag(version : String) : String
+    version.includes?('+') ? version : "v#{version}"
   end
 
   # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only
@@ -769,7 +813,7 @@ class App
     host = uri.host
     return if host.nil? || host.empty?
     {host.downcase, uri.path}
-  rescue URI::Error
+  rescue URI::Error | OverflowError # a port too big for Int32
     nil
   end
 

@@ -9,6 +9,16 @@ require "../../src/cyclonedx/declaration"
 require "uuid"
 
 describe CycloneDX::BOM do
+  describe "#to_csv" do
+    it "quotes out cells a spreadsheet would read as a formula" do
+      names = ["=1+1", "+1", "-1", "@SUM(A1)", "\t=1+1", "\r=1+1", "\n=1+1", "safe"]
+      bom = CycloneDX::BOM.new(names.map { |n| CycloneDX::Component.new(name: n) }, "1.6")
+      # Checked on the text: Crystal 1.21's CSV.parse splits a quoted "\r".
+      csv = bom.to_csv
+      names.each { |n| csv.should contain(n == "safe" ? "\nsafe," : "'#{n}") }
+    end
+  end
+
   describe "serialNumber consistency" do
     it "has a consistent serial number across XML generations" do
       components = [] of CycloneDX::Component
@@ -393,5 +403,14 @@ describe "CycloneDX::BOM XML characters" do
     nodes.map(&.["bom-ref"]).should eq(["foo@1.0\uFFFD", "bar@2.0", "baz"])
     nodes[2].first_element_child.try(&.content).should eq("b\uFFFDz")
     doc.xpath_string("string(//*[local-name()='description'])").should eq("a\uFFFDb")
+  end
+
+  it "replaces a NUL too, which XML::Builder refuses outright" do
+    components = [CycloneDX::Component.new(name: "a\0b", bom_ref: "a\0b", description: "c\0d")]
+    doc = XML.parse(CycloneDX::BOM.new(components, "1.6").to_xml)
+
+    doc.errors.should be_nil
+    doc.xpath_string("string(//*[local-name()='component']/@bom-ref)").should eq("a\uFFFDb")
+    doc.xpath_string("string(//*[local-name()='description'])").should eq("c\uFFFDd")
   end
 end

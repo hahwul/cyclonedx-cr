@@ -164,13 +164,35 @@ class CycloneDX::BOM
   # parsing that back for the version gate silently truncated the document, so
   # both become U+FFFD first (replaced rather than dropped so distinct bom-refs
   # stay distinct). `scrub` must come first: the regex raises on invalid UTF-8.
+  #
+  # A NUL is the exception: Crystal's `XML::Builder` raises on it rather than
+  # writing it, so a BOM holding one is rebuilt from its own JSON with every NUL
+  # replaced the same way.
   def to_xml : String
-    raw = build_xml.scrub.gsub(XML_ILLEGAL_CHARS, "\uFFFD")
-    VersionGate.filter_xml(raw, @spec_version)
+    raw = begin
+      build_xml
+    rescue ex : XML::Error
+      raise ex unless raw_json.includes?("\\u0000")
+      BOM.from_json(without_nul(JSON.parse(raw_json.scrub)).to_json).build_xml
+    end
+    VersionGate.filter_xml(raw.scrub.gsub(XML_ILLEGAL_CHARS, "\uFFFD"), @spec_version)
+  end
+
+  # `doc` with every NUL in its strings replaced by U+FFFD.
+  private def without_nul(doc : JSON::Any) : JSON::Any
+    if str = doc.as_s?
+      JSON::Any.new(str.gsub('\0', '\uFFFD'))
+    elsif arr = doc.as_a?
+      JSON::Any.new(arr.map { |item| without_nul(item) })
+    elsif hash = doc.as_h?
+      JSON::Any.new(hash.transform_values { |value| without_nul(value) })
+    else
+      doc
+    end
   end
 
   # Builds the raw (unfiltered) XML for the BOM.
-  private def build_xml : String
+  protected def build_xml : String
     String.build do |str|
       XML.build(str) do |xml|
         xml.element("bom", attributes: {
@@ -236,7 +258,10 @@ class CycloneDX::BOM
 
   # Characters that make a spreadsheet treat a cell as a formula rather than as
   # text. Excel, LibreOffice and Google Sheets all evaluate such cells on open.
-  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@'}
+  # Tab and carriage return are on OWASP's list too, and a line feed is the same
+  # case: a spreadsheet may drop the leading whitespace and then read the
+  # formula behind it.
+  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@', '\t', '\r', '\n'}
 
   # Serializes the BOM to CSV format.
   #

@@ -128,9 +128,37 @@ describe ShardFile do
             github: o/t
           ~:
             github: o/null
+          010:
+            github: o/octal
+          0x1F:
+            github: o/hex
+          1e3:
+            github: o/float
+          "~":
+            github: o/quoted
         YAML
 
-      ShardFile.from_yaml(yaml).runtime_dependency_names.should eq(Set{"2048", "true"})
+      ShardFile.from_yaml(yaml).runtime_dependency_names.should eq(Set{"2048", "true", "010", "0x1F", "1e3", "~"})
+    end
+  end
+
+  describe "dependency names through YAML anchors" do
+    it "expands merge keys and aliases" do
+      yaml = <<-YAML
+        name: my-shard
+        x-common: &common
+          x:
+            github: o/x
+        dependencies:
+          <<: *common
+          z:
+            github: o/z
+        development_dependencies: *common
+        YAML
+
+      shard = ShardFile.from_yaml(yaml)
+      shard.runtime_dependency_names.should eq(Set{"x", "z"})
+      shard.dev_dependency_names.should eq(Set{"x"})
     end
   end
 

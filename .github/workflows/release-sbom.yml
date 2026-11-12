@@ -13,12 +13,16 @@ jobs:
       # Checkout the repository code
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # Install the shards so the SBOM records the full dependency graph
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
+      # Only the shards' shard.yml files are read: skip their postinstall
+      # scripts, which would otherwise run in a job holding a write token.
       - name: Install dependencies
-        run: shards install
+        run: shards install --skip-postinstall --skip-executables
 
       # Generate SBOM using hahwul/cyclonedx-cr action
       - name: Generate SBOM
