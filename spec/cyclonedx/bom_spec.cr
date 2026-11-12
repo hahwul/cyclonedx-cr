@@ -11,7 +11,7 @@ require "uuid"
 describe CycloneDX::BOM do
   describe "#to_csv" do
     it "quotes out cells a spreadsheet would read as a formula" do
-      names = ["=1+1", "+1", "-1", "@SUM(A1)", "\t=1+1", "\r=1+1", "safe"]
+      names = ["=1+1", "+1", "-1", "@SUM(A1)", "\t=1+1", "\r=1+1", "\n=1+1", "safe"]
       bom = CycloneDX::BOM.new(names.map { |n| CycloneDX::Component.new(name: n) }, "1.6")
       cells = CSV.parse(bom.to_csv).skip(1).map(&.first)
       cells.should eq(names.map { |n| n == "safe" ? n : "'#{n}" })

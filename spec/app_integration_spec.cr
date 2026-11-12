@@ -801,6 +801,9 @@ describe "App Integration" do
       # port too big to parse used to crash the run; neither is published.
       urls["at_in_password"].should be_empty
       urls["huge_port"].should be_empty
+      # Nor is one whose token holds a `/` or `#`, which ends the authority early.
+      urls["slash_in_token"].should be_empty
+      urls["hash_in_token"].should be_empty
     end
 
     it "does not read a shard.yml outside the install dir for a path-like lock name" do

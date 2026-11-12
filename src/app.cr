@@ -562,10 +562,11 @@ class App
   # (see `normalize_url`).
   private def build_external_reference(ref_type : String, url : String?) : CycloneDX::ExternalReference?
     return unless url && url =~ URL_PATTERN
+    vcs = ref_type == REF_TYPE_VCS
+    normalized = normalize_url(url, vcs) || return
     # A remote's query or fragment means nothing to git, but `?private_token=`
     # is a way to authenticate, so neither is published. A website keeps them.
-    url = strip_url_query_fragment(url) if ref_type == REF_TYPE_VCS
-    normalized = normalize_url(url) || return
+    normalized = strip_url_query_fragment(normalized) if vcs
     CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalized)
   end
 
@@ -579,16 +580,21 @@ class App
   # Over ssh the user is the account to log in as (`git@`), not a secret, so
   # only a password is removed there.
   #
-  # nil when the URL cannot be parsed (a bad port), or when its authority still
-  # holds an `@` after parsing (`user:p@ss@host`): the parser splits at the
-  # first `@`, so part of the secret would be emitted as the host.
-  private def normalize_url(url : String) : String?
+  # nil when the URL cannot be parsed (a bad port), or when an `@` is left
+  # outside the userinfo once it is parsed: the parser ends the userinfo at the
+  # first `@`, and the authority at the first `/`, `?` or `#`, so a secret
+  # holding one of those (`user:p@ss@host`, `https://ab/cd@host`) would be
+  # emitted as the host or path. A `remote` (a vcs URL) has no other use for an
+  # `@`; a website path can (`https://medium.com/@user`), so only its host is
+  # checked.
+  private def normalize_url(url : String, remote : Bool) : String?
     if m = url.match(SCP_GIT_PATTERN)
       url = "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
     end
 
     uri = URI.parse(url)
-    return if uri.host.try(&.includes?('@'))
+    rest = remote ? {uri.host, uri.path, uri.query, uri.fragment} : {uri.host}
+    return if rest.any?(&.try(&.includes?('@')))
     return url unless uri.user || uri.password
     uri.password = nil
     uri.user = nil unless uri.scheme == "ssh"

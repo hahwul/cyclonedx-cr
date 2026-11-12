@@ -31,9 +31,9 @@
   identifier at all.
 - A `vcs` reference drops the remote's query and fragment
   (`?private_token=...`). A URL whose credentials cannot be split off cleanly
-  (an unencoded `@` in the password) is not recorded.
+  (an unencoded `@`, `/` or `#` in the token) is not recorded.
 - A git URL with a port too large to parse no longer crashes the run.
-- CSV cells starting with a tab or carriage return are quoted out too, per
+- CSV cells starting with a tab, carriage return or line feed are quoted out too, per
   OWASP's CSV-injection guidance.
 - A NUL in any string no longer crashes XML output; it becomes U+FFFD like the
   other characters XML cannot carry.

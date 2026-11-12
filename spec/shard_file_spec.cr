@@ -142,6 +142,26 @@ describe ShardFile do
     end
   end
 
+  describe "dependency names through YAML anchors" do
+    it "expands merge keys and aliases" do
+      yaml = <<-YAML
+        name: my-shard
+        x-common: &common
+          x:
+            github: o/x
+        dependencies:
+          <<: *common
+          z:
+            github: o/z
+        development_dependencies: *common
+        YAML
+
+      shard = ShardFile.from_yaml(yaml)
+      shard.runtime_dependency_names.should eq(Set{"x", "z"})
+      shard.dev_dependency_names.should eq(Set{"x"})
+    end
+  end
+
   describe "#version" do
     it "treats a blank version as absent" do
       ShardFile.from_yaml(%(name: x\nversion: ""\n)).version.should be_nil

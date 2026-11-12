@@ -171,7 +171,8 @@ class CycloneDX::BOM
   def to_xml : String
     raw = begin
       build_xml
-    rescue XML::Error
+    rescue ex : XML::Error
+      raise ex unless raw_json.includes?("\\u0000")
       BOM.from_json(without_nul(JSON.parse(raw_json.scrub)).to_json).build_xml
     end
     VersionGate.filter_xml(raw.scrub.gsub(XML_ILLEGAL_CHARS, "\uFFFD"), @spec_version)
@@ -257,9 +258,10 @@ class CycloneDX::BOM
 
   # Characters that make a spreadsheet treat a cell as a formula rather than as
   # text. Excel, LibreOffice and Google Sheets all evaluate such cells on open.
-  # Tab and carriage return are on OWASP's list too: a spreadsheet may drop the
-  # leading whitespace and then read the formula behind it.
-  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@', '\t', '\r'}
+  # Tab and carriage return are on OWASP's list too, and a line feed is the same
+  # case: a spreadsheet may drop the leading whitespace and then read the
+  # formula behind it.
+  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@', '\t', '\r', '\n'}
 
   # Serializes the BOM to CSV format.
   #

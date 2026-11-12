@@ -60,13 +60,20 @@ class ShardFile
   module DependencyNames
     def self.from_yaml(ctx : YAML::ParseContext, node : YAML::Nodes::Node) : Set(String)
       names = Set(String).new
+      node = resolve(node)
       return names unless node.is_a?(YAML::Nodes::Mapping)
-      node.each do |key, _|
+      # `Core.each` expands `<<` merge keys, as YAML::Any did.
+      YAML::Schema::Core.each(node) do |key, _|
+        key = resolve(key)
         next unless key.is_a?(YAML::Nodes::Scalar)
-        next if YAML::Schema::Core.parse_scalar(key).nil?
+        next if YAML::Schema::Core.parse_null?(key)
         key.value.presence.try { |name| names << name }
       end
       names
+    end
+
+    private def self.resolve(node : YAML::Nodes::Node?) : YAML::Nodes::Node?
+      node.is_a?(YAML::Nodes::Alias) ? node.value : node
     end
   end
 end
