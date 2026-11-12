@@ -426,15 +426,15 @@ class App
     version ? "#{name}@#{version}" : name
   end
 
-  # Simple URL validation pattern (http/https/git schemes)
-  private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|git@.+)\z/
+  # Simple URL validation pattern (http/https/git/ssh schemes)
+  private URL_PATTERN = /\A(?:https?:\/\/.+|git:\/\/.+|ssh:\/\/.+|git@.+)\z/
 
   # scp-style git remote: `user@host:path` (no scheme). This is NOT a valid URI
   # so it cannot be emitted verbatim as a CycloneDX externalReference `url`
   # (the XSD validates it as `xs:anyURI`). The capture groups are the user, host
   # and path. The `(?!\/)` lookahead skips a `:/...` shape so an already-URI-ish
   # value is left untouched. Only `git@`-form URLs (per `URL_PATTERN`) ever reach
-  # this; `ssh://...` remotes are not emitted as external references at all.
+  # this.
   private SCP_GIT_PATTERN = /\A([\w.\-]+)@([\w.\-]+):(?!\/)(.+)\z/
 
   # SPDX license expression operators
@@ -560,13 +560,23 @@ class App
 
   # Rewrites an scp-style git remote (`git@host:owner/repo.git`) to its
   # equivalent `ssh://git@host/owner/repo.git` URI so the value is a valid
-  # CycloneDX externalReference `url`. All other URLs are returned unchanged.
+  # CycloneDX externalReference `url`.
+  #
+  # Credentials are dropped: a private dependency is often declared as
+  # `https://<token>@host/...` or `https://user:<token>@host/...`, shard.lock
+  # keeps that URL verbatim, and an SBOM is a document meant to be published.
+  # Over ssh the user is the account to log in as (`git@`), not a secret, so
+  # only a password is removed there.
   private def normalize_url(url : String) : String
     if m = url.match(SCP_GIT_PATTERN)
-      "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
-    else
-      url
+      url = "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
     end
+
+    uri = URI.parse(url)
+    return url unless uri.user || uri.password
+    uri.password = nil
+    uri.user = nil unless uri.scheme == "ssh"
+    uri.to_s
   end
 
   # Reads the locked shards from `shard.lock`, dropping entries that cannot
@@ -709,15 +719,17 @@ class App
   # `pkg:github`, `pkg:gitlab` and `pkg:bitbucket` define the version as a tag or
   # a commit. shards records `X.Y.Z+git.commit.<sha>` when the locked commit is
   # not a released tag, and that composite string resolves to neither, so the
-  # embedded SHA is used instead. A plain `X.Y.Z` is left alone; it is the tag
-  # (modulo a `v` prefix, which the forges resolve either way).
+  # embedded SHA is used instead. A plain `X.Y.Z` names the release, and shards
+  # only ever installs a release from the tag `vX.Y.Z` (its git resolver maps a
+  # version to `GitTagRef.new "v#{version}"`), so that is the tag the PURL names.
+  # The forges do not resolve `X.Y.Z` to `vX.Y.Z`: the bare form is a 404.
   #
   # A `version: 1.0` lock file instead names the reference directly, so `tag:` is
   # the last fallback. `branch:` deliberately is not: a branch name is neither a
   # tag nor a commit, and it identifies a moving target rather than the tree that
   # was actually installed.
   private def purl_version(details : ShardLockEntry) : String?
-    details.commit || details.version || details.tag
+    details.commit || details.version.try { |version| "v#{version}" } || details.tag
   end
 
   # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only

@@ -221,7 +221,7 @@ describe "App Integration" do
       components = JSON.parse(output)["components"].as_a
 
       kemal = components.find! { |c| c["name"] == "kemal" }
-      kemal["purl"].should eq("pkg:github/kemalcr/kemal@1.4.0")
+      kemal["purl"].should eq("pkg:github/kemalcr/kemal@v1.4.0")
     end
 
     it "generates PURL for git URL dependencies" do
@@ -229,7 +229,7 @@ describe "App Integration" do
       components = JSON.parse(output)["components"].as_a
 
       ameba = components.find! { |c| c["name"] == "ameba" }
-      ameba["purl"].should eq("pkg:github/crystal-ameba/ameba@1.6.4")
+      ameba["purl"].should eq("pkg:github/crystal-ameba/ameba@v1.6.4")
     end
 
     it "generates dependency graph" do
@@ -301,7 +301,7 @@ describe "App Integration" do
       components = JSON.parse(output)["components"].as_a
 
       my_lib = components.find! { |c| c["name"] == "my_lib" }
-      my_lib["purl"].should eq("pkg:gitlab/myorg/my_lib@2.0.0")
+      my_lib["purl"].should eq("pkg:gitlab/myorg/my_lib@v2.0.0")
     end
 
     it "generates PURL for gitlab git URL dependencies" do
@@ -309,7 +309,7 @@ describe "App Integration" do
       components = JSON.parse(output)["components"].as_a
 
       other_lib = components.find! { |c| c["name"] == "other_lib" }
-      other_lib["purl"].should eq("pkg:gitlab/otherorg/other_lib@1.0.0")
+      other_lib["purl"].should eq("pkg:gitlab/otherorg/other_lib@v1.0.0")
     end
   end
 
@@ -426,48 +426,48 @@ describe "App Integration" do
 
   describe "PURL canonicalization and encoding" do
     it "lowercases the namespace/name for github (case-insensitive type)" do
-      canon_purls["gh_upper"].should eq("pkg:github/sysexitcode/foo@1.0.0")
+      canon_purls["gh_upper"].should eq("pkg:github/sysexitcode/foo@v1.0.0")
     end
 
     it "still produces a PURL when a git URL has a trailing slash" do
-      canon_purls["gh_trailing"].should eq("pkg:github/owner/repo@1.2.3")
+      canon_purls["gh_trailing"].should eq("pkg:github/owner/repo@v1.2.3")
     end
 
     it "percent-encodes reserved characters in the version" do
       # '+' build metadata must be encoded as %2B per the PURL spec.
-      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@0.1.0%2Bgit.commit.abc")
+      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@v0.1.0%2Bgit.commit.abc")
     end
 
     it "emits a pkg:bitbucket PURL for bitbucket git URLs (lowercased)" do
-      canon_purls["bb_url"].should eq("pkg:bitbucket/team/proj@3.0.0")
+      canon_purls["bb_url"].should eq("pkg:bitbucket/team/proj@v3.0.0")
     end
 
     it "captures the full path for gitlab subgroup git URLs" do
-      canon_purls["gl_subgroup"].should eq("pkg:gitlab/group/subgroup/repo@1.1.1")
+      canon_purls["gl_subgroup"].should eq("pkg:gitlab/group/subgroup/repo@v1.1.1")
     end
 
     it "preserves case for gitlab (case-sensitive type)" do
-      canon_purls["gl_key"].should eq("pkg:gitlab/MyOrg/MyLib@2.0.0")
+      canon_purls["gl_key"].should eq("pkg:gitlab/MyOrg/MyLib@v2.0.0")
     end
 
     it "does not leak an explicit port from an ssh github URL into the PURL" do
-      canon_purls["gh_ssh_port"].should eq("pkg:github/owner/repo@4.0.0")
+      canon_purls["gh_ssh_port"].should eq("pkg:github/owner/repo@v4.0.0")
     end
 
     it "does not leak an explicit port from a gitlab URL into the PURL namespace" do
-      canon_purls["gl_port"].should eq("pkg:gitlab/group/repo@5.0.0")
+      canon_purls["gl_port"].should eq("pkg:gitlab/group/repo@v5.0.0")
     end
 
     it "strips a ?query from a git URL instead of leaking it into the PURL name" do
-      canon_purls["gh_query"].should eq("pkg:github/owner/repo@6.0.0")
+      canon_purls["gh_query"].should eq("pkg:github/owner/repo@v6.0.0")
     end
 
     it "strips a #fragment from a git URL instead of leaking it into the PURL name" do
-      canon_purls["gl_fragment"].should eq("pkg:gitlab/group/subgroup/repo@7.0.0")
+      canon_purls["gl_fragment"].should eq("pkg:gitlab/group/subgroup/repo@v7.0.0")
     end
 
     it "produces a canonical PURL when a git URL has a trailing slash before a query" do
-      canon_purls["gh_trailing_query"].should eq("pkg:github/owner/repo@8.0.0")
+      canon_purls["gh_trailing_query"].should eq("pkg:github/owner/repo@v8.0.0")
     end
   end
 
@@ -493,11 +493,11 @@ describe "App Integration" do
     it "matches the forge host case-insensitively" do
       # Hosts are case-insensitive (RFC 3986), so an uppercase host is still
       # GitHub and must not silently lose its PURL.
-      foreign_purls["uppercase_host"].should eq("pkg:github/owner/repo@1.0.0")
+      foreign_purls["uppercase_host"].should eq("pkg:github/owner/repo@v1.0.0")
     end
 
     it "matches the forge host case-insensitively for scp-style remotes" do
-      foreign_purls["scp_uppercase"].should eq("pkg:github/owner/repo@1.0.0")
+      foreign_purls["scp_uppercase"].should eq("pkg:github/owner/repo@v1.0.0")
     end
   end
 
@@ -522,11 +522,11 @@ describe "App Integration" do
     end
 
     it "tolerates a .git suffix on a shorthand" do
-      shorthand_purls["dot_git_suffix"].should eq("pkg:github/owner/repo@1.0.0")
+      shorthand_purls["dot_git_suffix"].should eq("pkg:github/owner/repo@v1.0.0")
     end
 
     it "tolerates a trailing slash on a shorthand" do
-      shorthand_purls["trailing_slash"].should eq("pkg:github/owner/repo@1.0.0")
+      shorthand_purls["trailing_slash"].should eq("pkg:github/owner/repo@v1.0.0")
     end
   end
 
@@ -735,8 +735,8 @@ describe "App Integration" do
     it "emits a PURL for every forge shorthand, canonicalised" do
       components = all_resolver_components
       # github and bitbucket namespaces are case-insensitive and must be folded.
-      components["gh"]["purl"].should eq("pkg:github/kemalcr/kemal@1.4.0")
-      components["bb"]["purl"].should eq("pkg:bitbucket/team/bbrepo@1.2.3")
+      components["gh"]["purl"].should eq("pkg:github/kemalcr/kemal@v1.4.0")
+      components["bb"]["purl"].should eq("pkg:bitbucket/team/bbrepo@v1.2.3")
     end
 
     it "uses the locked commit rather than shards' composite version string" do
@@ -772,6 +772,29 @@ describe "App Integration" do
       # A branch is neither a tag nor a commit: it names a moving target, not the
       # installed tree, so it must not be asserted as the PURL version.
       purls["tracked"].should eq("pkg:github/owner/tracked")
+    end
+
+    it "names the vX.Y.Z tag shards installs a release from" do
+      # shards' git resolver checks a release out from the tag `v#{version}`;
+      # `pkg:github/kemalcr/kemal@1.4.0` names a tag that does not exist.
+      all_resolver_components["gh"]["purl"].should eq("pkg:github/kemalcr/kemal@v1.4.0")
+    end
+
+    it "keeps credentials out of vcs references" do
+      # Private dependencies are declared with a token in the URL, shard.lock
+      # keeps it verbatim, and an SBOM gets published.
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/credentials_lock.lock 2>/dev/null`
+      $?.success?.should be_true
+      output.should_not contain("SECRETTOKEN")
+
+      urls = JSON.parse(output)["components"].as_a.to_h do |c|
+        {c["name"].as_s, c["externalReferences"].as_a.map(&.["url"].as_s)}
+      end
+      urls["token_user"].should eq(["https://github.com/owner/private.git"])
+      urls["user_pass"].should eq(["https://gitlab.example.com/group/repo.git"])
+      # Over ssh the user is the login, not a secret; ssh:// remotes are recorded.
+      urls["ssh_user"].should eq(["ssh://git@git.example.com:2222/team/repo.git"])
+      urls["ssh_pass"].should eq(["ssh://deploy@hg.example.com/repo"])
     end
 
     it "omits the version entirely for a dependency that has none" do

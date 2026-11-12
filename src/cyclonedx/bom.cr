@@ -236,7 +236,9 @@ class CycloneDX::BOM
 
   # Characters that make a spreadsheet treat a cell as a formula rather than as
   # text. Excel, LibreOffice and Google Sheets all evaluate such cells on open.
-  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@'}
+  # Tab and carriage return are on OWASP's list too: a spreadsheet may drop the
+  # leading whitespace and then read the formula behind it.
+  CSV_FORMULA_PREFIXES = {'=', '+', '-', '@', '\t', '\r'}
 
   # Serializes the BOM to CSV format.
   #

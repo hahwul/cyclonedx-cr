@@ -18,8 +18,19 @@
 - Shards reachable only through `development_dependencies` are now `optional`
   transitively, not just the direct ones; anything a runtime dependency reaches
   stays `required`.
+- Forge PURLs for a released version now name the tag shards installs it from:
+  `pkg:github/kemalcr/kemal@v1.4.0`, not `@1.4.0`. shards only checks releases
+  out from `vX.Y.Z` tags, and GitHub/GitLab/Bitbucket do not resolve the bare
+  form. Commit-pinned versions still use the SHA.
 
 ### Fixed
+- Credentials in a dependency's or the project's URL (`https://<token>@host/...`,
+  `https://user:<token>@host/...`) no longer end up in `externalReferences`.
+- `ssh://` remotes are recorded as `vcs` references like every other remote, so
+  a dependency fetched over ssh from an unknown host is no longer left with no
+  identifier at all.
+- CSV cells starting with a tab or carriage return are quoted out too, per
+  OWASP's CSV-injection guidance.
 - An empty `version: ""` in `shard.yml` or `shard.lock` is treated as absent
   instead of aborting with "the generated SBOM is not valid CycloneDX".
 - Warnings escape control characters, so a shard name or source carrying a
