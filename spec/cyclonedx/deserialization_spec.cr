@@ -15,6 +15,18 @@ describe "BOM JSON deserialization" do
     bom.components.should be_empty
   end
 
+  it "keeps a missing serialNumber absent and the BOM version in both formats" do
+    # serialNumber is optional in every version; most VEX documents omit it.
+    bom = CycloneDX::BOM.from_json(%q({"bomFormat":"CycloneDX","specVersion":"1.6","version":7}))
+    bom.serial_number.should be_nil
+    json = JSON.parse(bom.to_json)
+    json["serialNumber"]?.should be_nil
+    json["version"].should eq(7)
+    xml = XML.parse(bom.to_xml).first_element_child.not_nil!
+    xml["serialNumber"]?.should be_nil
+    xml["version"].should eq("7")
+  end
+
   it "deserializes components" do
     json = %q({
       "bomFormat":"CycloneDX","specVersion":"1.6","version":1,

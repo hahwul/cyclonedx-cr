@@ -6,5 +6,5 @@ shards:
 
   spdx:
     git: https://github.com/hahwul/spdx.cr.git
-    version: 0.1.0+git.commit.21ac950936830412628cbf631bf48ece6dce9a48
+    version: 0.1.0+git.commit.5fe3383b64620c53923ac0d2790bb91e2d2b2741
 

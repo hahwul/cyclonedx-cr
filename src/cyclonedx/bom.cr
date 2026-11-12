@@ -39,8 +39,13 @@ class CycloneDX::BOM
   # The unique serial number of the BOM. Randomly generated unless the caller
   # supplies one; a caller-supplied value is what makes byte-reproducible output
   # possible (see the CLI's `--reproducible`).
+  #
+  # Optional in every CycloneDX version (neither the JSON schemas' `required`
+  # list nor the XSD's `use="optional"` attribute demands it), so a parsed BOM
+  # without one keeps it absent: nil, and omitted again on output, rather than
+  # a parse failure or a fabricated identity.
   @[JSON::Field(key: "serialNumber")]
-  getter serial_number : String
+  getter serial_number : String?
 
   # Metadata about the BOM.
   getter metadata : Metadata?
@@ -195,11 +200,9 @@ class CycloneDX::BOM
   protected def build_xml : String
     String.build do |str|
       XML.build(str) do |xml|
-        xml.element("bom", attributes: {
-          "xmlns":        "#{XML_NAMESPACE}/#{@spec_version}",
-          "version":      BOM_VERSION.to_s,
-          "serialNumber": @serial_number,
-        }) do
+        attributes = {"xmlns" => "#{XML_NAMESPACE}/#{@spec_version}", "version" => @bom_version.to_s}
+        @serial_number.try { |serial| attributes["serialNumber"] = serial }
+        xml.element("bom", attributes: attributes) do
           # Element order below follows the CycloneDX bomType XSD <sequence>:
           # metadata, components, services, externalReferences, dependencies,
           # compositions, properties, vulnerabilities, annotations, formulation,

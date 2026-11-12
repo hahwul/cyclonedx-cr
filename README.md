@@ -199,9 +199,9 @@ Simplified comma-separated values format for basic analysis and reporting, with
 the columns `Name,Version,PURL,Type,Scope,BOM-Ref`. The first row is the root
 component (from `metadata.component`), followed by one row per dependency.
 
-Values beginning with `=`, `+`, `-` or `@` are prefixed with a single quote so
-spreadsheet applications render them as text rather than evaluating them as
-formulas.
+Values beginning with `=`, `+`, `-`, `@`, a tab, a carriage return or a line
+feed are prefixed with a single quote so spreadsheet applications render them as
+text rather than evaluating them as formulas.
 
 ## CycloneDX Specification Versions
 

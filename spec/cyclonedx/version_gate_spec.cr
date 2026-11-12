@@ -28,7 +28,7 @@ private def core_bom(version : String) : CycloneDX::BOM
   dep = CycloneDX::Component.new(
     name: "lib-a", version: "2.0", purl: "pkg:github/x/a@2.0",
     bom_ref: "lib-a@2.0", scope: "required",
-    hashes: [CycloneDX::Hash.new(algorithm: "SHA-256", content: "deadbeef")]
+    hashes: [CycloneDX::Hash.new(algorithm: "SHA-256", content: "deadbeef" * 8)]
   )
   graph = [
     CycloneDX::Dependency.new(ref: "myapp@1.0", depends_on: ["lib-a@2.0"]),

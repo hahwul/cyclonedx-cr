@@ -59,14 +59,27 @@ class ShardLockEntry
   # parsed as plain dependencies and so may carry any of these keys directly.
   # Ignoring them meant a locked dependency that names its exact commit right
   # there in the file produced a PURL with no version at all.
+  # Blank values read as absent, as for `version`.
   @[YAML::Field(key: "commit")]
-  getter locked_commit : String?
-  getter tag : String?
-  getter branch : String?
+  @locked_commit : String?
+  @tag : String?
+  @branch : String?
+
+  def locked_commit : String?
+    @locked_commit.presence
+  end
+
+  def tag : String?
+    @tag.presence
+  end
+
+  def branch : String?
+    @branch.presence
+  end
 
   # The commit SHA this entry locks: the explicit `commit:` key if present,
   # otherwise the one shards embedded in `version`.
   def commit : String?
-    @locked_commit || @version.try(&.match(GIT_COMMIT_VERSION)).try(&.[1])
+    locked_commit || @version.try(&.match(GIT_COMMIT_VERSION)).try(&.[1])
   end
 end

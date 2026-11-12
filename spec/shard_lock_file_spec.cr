@@ -148,6 +148,26 @@ describe ShardLockFile do
       shards["tracked"].tag.should be_nil
     end
 
+    it "reads blank git reference keys as absent" do
+      # Otherwise `commit: ""` wins over the version and the PURL loses it.
+      yaml = <<-YAML
+        version: 1.0
+        shards:
+          blank:
+            github: o/r
+            version: 0.1.0+git.commit.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            commit: ""
+            tag: ""
+            branch: ""
+        YAML
+
+      blank = ShardLockFile.from_yaml(yaml).shards["blank"]
+      blank.commit.should eq("a" * 40)
+      blank.locked_commit.should be_nil
+      blank.tag.should be_nil
+      blank.branch.should be_nil
+    end
+
     it "prefers an explicit commit key over one embedded in the version" do
       yaml = <<-YAML
         version: 1.0
