@@ -168,6 +168,18 @@ describe "App Integration" do
       JSON.parse(output)["components"].as_a.should_not be_empty
     end
 
+    it "looks for lib/ in the working directory when shard.yml is piped" do
+      # A pipe has no project directory; shards installs to ./lib.
+      stdout = IO::Memory.new
+      stderr = IO::Memory.new
+      File.open("#{GRAPH}/shard.yml") do |shard|
+        Process.run(File.expand_path(BINARY), ["-s", "/dev/stdin", "-i", "shard.lock"], chdir: GRAPH,
+          env: {"SHARDS_INSTALL_PATH" => nil}, input: shard, output: stdout, error: stderr).success?.should be_true
+      end
+      stderr.to_s.should_not contain("not found")
+      JSON.parse(stdout.to_s)["compositions"].as_a.map(&.["aggregate"].as_s).should eq(["complete"])
+    end
+
     it "errors when an input is a directory" do
       output = `#{BINARY} -s #{FIXTURES} -i #{FIXTURES}/shard.lock 2>&1`
       output.should contain("not found")

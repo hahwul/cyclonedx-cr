@@ -40,6 +40,9 @@ class App
   # `SHARDS_INSTALL_PATH` says otherwise.
   DEFAULT_INSTALL_DIR = "lib"
 
+  # Where `/dev/stdin` and shell process substitution (`<(...)`) put a pipe.
+  private PIPE_DIRS = {"/dev", "/dev/fd", "/proc/self/fd"}
+
   # The structured `component.authors` array was introduced in 1.6.
   AUTHORS_MIN_VERSION = "1.6"
 
@@ -298,7 +301,11 @@ class App
   # (shards resolves it against the working directory, and so does this),
   # otherwise `lib/` next to shard.yml.
   private def install_path(shard_file : String) : String
-    ENV["SHARDS_INSTALL_PATH"]?.presence || File.join(File.dirname(shard_file), DEFAULT_INSTALL_DIR)
+    # A piped shard.yml (`-s /dev/stdin`, `-s <(...)`) has no project
+    # directory; shards itself installs to `lib/` under the working directory.
+    project_dir = File.dirname(shard_file)
+    project_dir = "." if project_dir.in?(PIPE_DIRS)
+    ENV["SHARDS_INSTALL_PATH"]?.presence || File.join(project_dir, DEFAULT_INSTALL_DIR)
   end
 
   # name => the runtime dependencies declared by that shard's installed

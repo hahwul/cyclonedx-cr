@@ -50,6 +50,7 @@ module CycloneDX
       /\Aurn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
     BOM_VERSION_MIN_ONE_SINCE = "1.5"
+    OBJECTS_SINCE             = "1.5"
 
     def validate(bom : BOM) : Bool
       @errors.clear
@@ -65,15 +66,13 @@ module CycloneDX
       if (serial = bom.serial_number) && !utf8_match?(serial, SERIAL_NUMBER_PATTERN)
         add_error("$.serialNumber", "'#{serial}' is not a 'urn:uuid:' RFC 4122 URN")
       end
-      # A positive integer from 1.5 on: `xs:positiveInteger` in the XSDs (1.4's
-      # is `xs:integer`) and `minimum: 1` in the 1.7 JSON schema.
+      # A positive integer from 1.5 on: `xs:positiveInteger` in the XSDs and
+      # `minimum: 1` in the JSON schemas (1.4 has `xs:integer` and no minimum).
       if bom.bom_version < 1 && !VersionGate.newer?(BOM_VERSION_MIN_ONE_SINCE, bom.spec_version)
         add_error("$.version", "must be at least 1")
       end
 
-      bom.components.each_with_index do |comp, i|
-        validate_component(comp, "$.components[#{i}]")
-      end
+      validate_components(bom.components, "$.components")
 
       if ext_refs = bom.external_references
         ext_refs.each_with_index do |ref, i|
@@ -81,11 +80,7 @@ module CycloneDX
         end
       end
 
-      if svcs = bom.services
-        svcs.each_with_index do |svc, i|
-          validate_service(svc, "$.services[#{i}]")
-        end
-      end
+      validate_services(bom.services, "$.services")
 
       if vulns = bom.vulnerabilities
         vulns.each_with_index do |vuln, i|
@@ -109,15 +104,7 @@ module CycloneDX
         validate_metadata(md, "$.metadata")
       end
 
-      bom.annotations.try &.each_with_index do |note, i|
-        path = "$.annotations[#{i}]"
-        if (timestamp = note.timestamp) && !valid_timestamp?(timestamp)
-          add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
-        end
-        next unless annotator = note.annotator
-        annotator.component.try { |comp| validate_component(comp, "#{path}.annotator.component") }
-        annotator.service.try { |svc| validate_service(svc, "#{path}.annotator.service") }
-      end
+      validate_annotations(bom.annotations)
 
       validate_document(bom)
       validate_spec_version_fields(bom)
@@ -341,6 +328,28 @@ module CycloneDX
       end
     end
 
+    # Annotations and the tools object form are 1.5+: the gate strips them
+    # from an older document (a warning), so their contents cannot make it
+    # invalid.
+    private def validate_annotations(annotations : Array(Annotation)?)
+      return if annotations.nil? || VersionGate.newer?(OBJECTS_SINCE, @spec_version)
+      annotations.each_with_index do |note, i|
+        path = "$.annotations[#{i}]"
+        if (timestamp = note.timestamp) && !valid_timestamp?(timestamp)
+          add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
+        end
+        next unless annotator = note.annotator
+        annotator.component.try { |comp| validate_component(comp, "#{path}.annotator.component") }
+        annotator.service.try { |svc| validate_service(svc, "#{path}.annotator.service") }
+      end
+    end
+
+    private def validate_tools(components : Array(Component)?, services : Array(Service)?, path : String)
+      return if VersionGate.newer?(OBJECTS_SINCE, @spec_version)
+      validate_components(components, "#{path}.components")
+      validate_services(services, "#{path}.services")
+    end
+
     private def validate_services(services : Array(Service)?, path : String)
       services.try &.each_with_index do |s, i|
         validate_service(s, "#{path}[#{i}]")
@@ -417,6 +426,9 @@ module CycloneDX
     private def validate_service(svc : Service, path : String)
       add_error("#{path}.name", "must not be empty") if svc.name.empty?
 
+      svc.external_references.try &.each_with_index do |ref, i|
+        validate_external_reference(ref, "#{path}.externalReferences[#{i}]")
+      end
       validate_services(svc.services, "#{path}.services")
     end
 
@@ -447,8 +459,7 @@ module CycloneDX
     end
 
     private def validate_vulnerability(vuln : Vulnerability, path : String)
-      validate_components(vuln.tool_components, "#{path}.tools.components")
-      validate_services(vuln.tool_services, "#{path}.tools.services")
+      validate_tools(vuln.tool_components, vuln.tool_services, "#{path}.tools")
 
       if analysis = vuln.analysis
         if state = analysis.state
@@ -529,8 +540,7 @@ module CycloneDX
         validate_component(comp, "#{path}.component")
       end
       # The tools object form (1.5+) holds full components and services too.
-      validate_components(metadata.tool_components, "#{path}.tools.components")
-      validate_services(metadata.tool_services, "#{path}.tools.services")
+      validate_tools(metadata.tool_components, metadata.tool_services, "#{path}.tools")
     end
 
     # Both schema families type timestamps as a date-time (`xs:dateTime` /
@@ -546,7 +556,8 @@ module CycloneDX
 
     private def valid_timestamp?(timestamp : String) : Bool
       return false unless utf8_match?(timestamp, TIMESTAMP_PATTERN)
-      Time.parse_rfc3339(timestamp)
+      # Both schemas allow any number of fraction digits; Crystal parses nine.
+      Time.parse_rfc3339(timestamp.sub(/(\.\d{9})\d+/, "\\1"))
       true
     rescue Time::Format::Error | ArgumentError # ArgumentError: no such day (February 30)
       false

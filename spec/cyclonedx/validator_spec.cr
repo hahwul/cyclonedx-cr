@@ -456,6 +456,29 @@ describe CycloneDX::Validator do
       end
     end
 
+    it "accepts a timestamp with more fraction digits than Crystal parses" do
+      metadata = CycloneDX::Metadata.new(timestamp: "2020-01-01T00:00:00.1234567891234Z")
+      CycloneDX::Validator.new.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: metadata)).should be_true
+    end
+
+    it "ignores annotations and tool objects at 1.4, where the gate strips them" do
+      note = CycloneDX::Annotation.new(subjects: [] of String, text: "x", timestamp: "yesterday",
+        annotator: CycloneDX::Annotator.new(organization: CycloneDX::OrganizationalEntity.new(name: "o")))
+      metadata = CycloneDX::Metadata.new(tool_components: [CycloneDX::Component.new(name: "")])
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.4", metadata: metadata, annotations: [note])).should be_true
+      validator.warnings.should_not be_empty
+    end
+
+    it "validates the external references of services" do
+      ref = CycloneDX::ExternalReference.new(ref_type: "website", url: "https://example.com",
+        hashes: [CycloneDX::Hash.new("SHA-256", "zz")])
+      svc = CycloneDX::Service.new(name: "s", external_references: [ref])
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", services: [svc])).should be_false
+      validator.errors.map(&.path).should eq(["$.services[0].externalReferences[0].hashes[0].content"])
+    end
+
     it "reports invalid UTF-8 instead of raising" do
       bad = String.new(Bytes[0xff, 0xfe])
       bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"1.6","serialNumber":"#{bad}",
