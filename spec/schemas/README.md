@@ -2,7 +2,7 @@
 
 Vendored copies of the official CycloneDX schemas for every spec version this
 library supports (1.4 / 1.5 / 1.6 / 1.7), from
-https://github.com/CycloneDX/specification:
+https://github.com/CycloneDX/specification at release tag `1.7.2`:
 
 | File | Used for |
 | --- | --- |

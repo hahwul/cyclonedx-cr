@@ -116,6 +116,20 @@ describe "App Integration" do
       end
     end
 
+    it "records itself in the legacy tools list for 1.4 and the tools object from 1.5" do
+      base = "-s #{FIXTURES}/shard.yml -i #{FIXTURES}/shard.lock --reproducible"
+      tools = JSON.parse(`#{BINARY} #{base} --spec-version 1.4 2>/dev/null`)["metadata"]["tools"]
+      tools.should eq(JSON.parse(%([{"vendor":"hahwul","name":"cyclonedx-cr","version":"#{App::VERSION}"}])))
+
+      %w[1.5 1.6 1.7].each do |version|
+        tools = JSON.parse(`#{BINARY} #{base} --spec-version #{version} 2>/dev/null`)["metadata"]["tools"]
+        tools.should eq(JSON.parse(%({"components":[{"type":"application","group":"hahwul",) +
+                                   %("name":"cyclonedx-cr","version":"#{App::VERSION}"}]})))
+        xml = `#{BINARY} #{base} --spec-version #{version} --output-format xml 2>/dev/null`
+        xml.should contain(%(<tools><components><component type="application"><group>hahwul</group>))
+      end
+    end
+
     it "rejects unknown options" do
       output = `#{BINARY} --unknown 2>&1`
       output.should contain("Unknown option")
@@ -414,6 +428,41 @@ describe "App Integration" do
       licenses[0]["license"]["name"].should eq("MIT WITH Bogus-Exception")
     end
 
+    # CycloneDX: `license.id` only for a bare id from the SPDX list (the enum),
+    # `expression` for any other valid SPDX expression, `name` for free text.
+    {
+      "Apache-2.0"                                    => {"id", "Apache-2.0"},
+      "apache-2.0"                                    => {"id", "Apache-2.0"},
+      "Apache-2.0+"                                   => {"expression", "Apache-2.0+"},
+      "LicenseRef-Foo"                                => {"expression", "LicenseRef-Foo"},
+      "DocumentRef-spdx-doc:LicenseRef-Foo"           => {"expression", "DocumentRef-spdx-doc:LicenseRef-Foo"},
+      "GPL-2.0-or-later WITH Classpath-exception-2.0" => {"expression", "GPL-2.0-or-later WITH Classpath-exception-2.0"},
+      "Foo+"                                          => {"name", "Foo+"},
+    }.each do |license, (field, value)|
+      it "emits #{license.inspect} as license #{field}" do
+        shard = File.tempname("cdx-license", ".yml")
+        begin
+          File.write(shard, {"name" => "lic", "version" => "0.1.0", "license" => license}.to_yaml)
+          output = `#{BINARY} -s #{shard} -i #{FIXTURES}/empty_lock.lock 2>&1`
+          $?.success?.should be_true
+          choice = JSON.parse(output)["metadata"]["component"]["licenses"][0]
+          actual = field == "expression" ? choice["expression"] : choice["license"][field]
+          actual.should eq(value)
+
+          if SchemaValidation::JSON_VALIDATOR
+            ok, err = SchemaValidation.json_schema_validate(output, "1.6")
+            fail(err) unless ok
+          end
+          if SchemaValidation::XMLLINT
+            ok, err = SchemaValidation.xsd_validate(`#{BINARY} -s #{shard} -i #{FIXTURES}/empty_lock.lock --output-format xml 2>&1`, "1.6")
+            fail(err) unless ok
+          end
+        ensure
+          File.delete?(shard)
+        end
+      end
+    end
+
     it "still treats a valid expression with a deprecated id as an SPDX expression" do
       # Deprecated ids (GPL-2.0+) are still valid SPDX expressions, so the
       # compound must be emitted as an expression, not a free-form name.
@@ -435,7 +484,7 @@ describe "App Integration" do
 
     it "percent-encodes reserved characters in the version" do
       # '+' build metadata must be encoded as %2B per the PURL spec.
-      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@0.1.0%2Bgit.commit.abc")
+      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@0.1.0%2Bbuild.5")
     end
 
     it "emits a pkg:bitbucket PURL for bitbucket git URLs (lowercased)" do

@@ -24,9 +24,9 @@ module CycloneDX
     # XML, a `oneOf` in JSON), so it cannot be a single generated field:
     #
     #   * the original flat list of `toolType` — deprecated from 1.5 but still
-    #     valid in every supported version, and what this library emits;
+    #     schema-valid in every supported version; the only form 1.4 has;
     #   * from 1.5 on, an object of full `components`/`services`, which is what
-    #     current third-party producers (syft, trivy, cdxgen, …) write.
+    #     the CLI and current third-party producers (syft, trivy, cdxgen, …) write.
     #
     # All three are serialized by hand in `on_to_json`/`to_xml` and parsed in
     # `on_unknown_json_attribute`.

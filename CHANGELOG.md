@@ -2,7 +2,22 @@
 
 ## Unreleased
 
+### Breaking
+- From spec 1.5 on, `metadata.tools` is the `{"components": [...]}` object, with
+  cyclonedx-cr as an `application` component (`group: hahwul`), instead of the
+  flat list 1.5 deprecated. 1.4 output keeps the list. Consumers that read
+  `metadata.tools` as an array from a 1.5+ BOM need to read the object form.
+- A single-term SPDX expression that is not a bare license-list id
+  (`Apache-2.0+`, `LicenseRef-Foo`, `DocumentRef-x:LicenseRef-y`) is now emitted
+  as an `expression`, not a license `name`. Only text that is not a valid SPDX
+  expression becomes a `name`; a bare id is still `license.id`.
+
 ### Changed
+- A `+git.commit.<sha>` version yields the commit whatever the SHA's length,
+  matching shards's own rule (`[0-9a-f]+` after a version). A SHA shorter than
+  7 characters used to leave the composite version in the forge PURL.
+- The vendored test schemas are refreshed to CycloneDX 1.7.2: `bom-1.7.xsd`,
+  and `spdx.schema.json`/`spdx.xsd` with the SPDX 3.29 license ids.
 - The dependency graph is now real. The root component depends only on its
   direct dependencies from `shard.yml`, instead of on every locked shard, and
   each locked shard carries the edges declared by its installed

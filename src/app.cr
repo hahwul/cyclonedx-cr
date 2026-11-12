@@ -43,6 +43,12 @@ class App
   # The structured `component.authors` array was introduced in 1.6.
   AUTHORS_MIN_VERSION = "1.6"
 
+  # The `metadata.tools` object form (`{components, services}`) was introduced
+  # in 1.5, which deprecated the older flat list of tools.
+  TOOLS_OBJECT_MIN_VERSION = "1.5"
+  TOOL_VENDOR              = "hahwul"
+  TOOL_NAME                = "cyclonedx-cr"
+
   # Under `--reproducible` the two fields that would otherwise change on every
   # run are pinned: the timestamp to the Unix epoch and the serial number to the
   # RFC 4122 nil UUID, which is the conventional "no identity assigned" value.
@@ -255,9 +261,7 @@ class App
       build_dependency(name, details, refs[name], optional.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED)
     end
 
-    tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
-    metadata = CycloneDX::Metadata.new(
-      component: main_component, tools: [tool], timestamp: bom_timestamp(options))
+    metadata = build_metadata(main_component, options)
 
     dep_graph, aggregates = build_dependency_graph(shard.name, main_ref, direct, declared, refs)
 
@@ -269,6 +273,23 @@ class App
       compositions: build_compositions(aggregates),
       serial_number: options.serial_number
     )
+  end
+
+  # `metadata`, recording this tool in `tools`. From 1.5 the flat list of tools
+  # is deprecated in favour of the `{components, services}` object, so the tool
+  # is described as an application component there; 1.4 has only the list. The
+  # vendor becomes the component `group`, the mapping the CycloneDX libraries
+  # use when converting between the two forms.
+  private def build_metadata(main_component : CycloneDX::Component, options : Options) : CycloneDX::Metadata
+    timestamp = bom_timestamp(options)
+    if CycloneDX::VersionGate.newer?(TOOLS_OBJECT_MIN_VERSION, options.spec_version)
+      tool = CycloneDX::Tool.new(vendor: TOOL_VENDOR, name: TOOL_NAME, version: VERSION)
+      CycloneDX::Metadata.new(component: main_component, timestamp: timestamp, tools: [tool])
+    else
+      tool = CycloneDX::Component.new(name: TOOL_NAME, version: VERSION, group: TOOL_VENDOR,
+        component_type: COMPONENT_TYPE_APPLICATION)
+      CycloneDX::Metadata.new(component: main_component, timestamp: timestamp, tool_components: [tool])
+    end
   end
 
   # Groups the graph nodes by how much is known about their edges, so a consumer
@@ -444,33 +465,33 @@ class App
   # this.
   private SCP_GIT_PATTERN = /\A([\w.\-]+)@([\w.\-]+):(?!\/)(.+)\z/
 
-  # SPDX license expression operators
-  private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
-
   # `shard.yml` author entries: `Name <email>`, where the name may be absent.
   # The bracketed part must look like an address (`local@domain`, RFC 5322
   # addr-spec): the JSON schemas type `email` as `idn-email`, so `Foo <n/a>`
   # stays a plain name rather than becoming a schema-invalid email.
   private AUTHOR_PATTERN = /\A([^<]*)<\s*([^<>@\s]+@[^<>@\s]+)\s*>\s*\z/
 
-  # Build a licenses array for a shard.yml license field.
+  # Build a licenses array for a shard.yml license field, following the
+  # CycloneDX license choice:
   #
-  # - Strings that contain an AND/OR/WITH operator AND parse as a valid SPDX
-  #   expression become a LicenseExpression. The validity check matters: a
-  #   free-form string like "Free for personal OR commercial use" contains
-  #   "OR" but is not a license expression, so it must NOT be emitted as one
-  #   (an invalid `expression` fails CycloneDX/SPDX validation).
-  # - Single identifiers that exist in the SPDX catalog use the canonical `id`.
-  # - Everything else falls back to the free-form `name`.
+  # - A single identifier from the SPDX license list becomes `license.id`, in
+  #   its canonical casing. That is the only form the `id` field (an enum of
+  #   exactly those identifiers) accepts.
+  # - Anything else that is a valid SPDX expression becomes `expression`. That
+  #   covers compound expressions and also single terms that are not a bare
+  #   list identifier: `Apache-2.0+`, `LicenseRef-Foo`, `MIT WITH LLVM-exception`.
+  # - Everything else is free text and falls back to `license.name`. Validity
+  #   matters here: "Free for personal OR commercial use" contains "OR" but is
+  #   no license expression, and an invalid `expression` fails validation.
   private def build_licenses(license : String) : Array(CycloneDX::License | CycloneDX::LicenseExpression)
-    if license =~ SPDX_EXPRESSION_PATTERN && valid_spdx_expression?(license)
-      [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
-    elsif Spdx.license?(license)
-      canonical = Spdx.find_license(license).id
-      [CycloneDX::License.new(id: canonical)] of CycloneDX::License | CycloneDX::LicenseExpression
-    else
-      [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
-    end
+    choice = if Spdx.license?(license)
+               CycloneDX::License.new(id: Spdx.find_license(license).id)
+             elsif valid_spdx_expression?(license)
+               CycloneDX::LicenseExpression.new(expression: license)
+             else
+               CycloneDX::License.new(name: license)
+             end
+    [choice] of CycloneDX::License | CycloneDX::LicenseExpression
   end
 
   # True when `license` is a SPDX license expression that is both grammatically
