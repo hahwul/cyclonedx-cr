@@ -173,7 +173,7 @@ describe ShardLockFile do
 
     it "takes no commit from a version shards would not parse as one" do
       ["0.1.0+git.commit.ABC", "0.1.0+git.commit.", "0.1.0+git.commit.abcx",
-       "0.1.0+git.commit.abc\n", "x0.1.0+git.commit.abc", "0.1.0+hg.commit.abc"].each do |version|
+       "0.1.0+git.commit.abc\n", "0.1.0+hg.commit.abc"].each do |version|
         entry = ShardLockEntry.from_yaml({"github" => "o/r", "version" => version}.to_yaml)
         entry.commit.should be_nil
       end

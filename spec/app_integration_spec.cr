@@ -438,6 +438,13 @@ describe "App Integration" do
       "DocumentRef-spdx-doc:LicenseRef-Foo"           => {"expression", "DocumentRef-spdx-doc:LicenseRef-Foo"},
       "GPL-2.0-or-later WITH Classpath-exception-2.0" => {"expression", "GPL-2.0-or-later WITH Classpath-exception-2.0"},
       "Foo+"                                          => {"name", "Foo+"},
+      " MIT\n"                                        => {"id", "MIT"},
+      "MIT +"                                         => {"expression", "MIT+"},
+      "mit and apache-2.0+"                           => {"expression", "MIT AND Apache-2.0+"},
+      "MIT AND BSD-2-Clause OR Apache-2.0"            => {"expression", "(MIT AND BSD-2-Clause) OR Apache-2.0"},
+      "(MIT OR ISC) AND Apache-2.0"                   => {"expression", "(MIT OR ISC) AND Apache-2.0"},
+      "gpl-2.0-or-later with classpath-exception-2.0" => {"expression", "GPL-2.0-or-later WITH Classpath-exception-2.0"},
+      "(MIT OR ISC) WITH Classpath-exception-2.0"     => {"name", "(MIT OR ISC) WITH Classpath-exception-2.0"},
     }.each do |license, (field, value)|
       it "emits #{license.inspect} as license #{field}" do
         shard = File.tempname("cdx-license", ".yml")

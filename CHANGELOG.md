@@ -10,7 +10,10 @@
 - A single-term SPDX expression that is not a bare license-list id
   (`Apache-2.0+`, `LicenseRef-Foo`, `DocumentRef-x:LicenseRef-y`) is now emitted
   as an `expression`, not a license `name`. Only text that is not a valid SPDX
-  expression becomes a `name`; a bare id is still `license.id`.
+  expression becomes a `name`; a bare id is still `license.id`. Expressions are
+  written in canonical form (list casing for ids and exceptions, upper-case
+  operators, `MIT+` for `MIT +`), so `mit and apache-2.0` becomes
+  `MIT AND Apache-2.0` instead of a `name`, and ` MIT` becomes `license.id`.
 
 ### Changed
 - A `+git.commit.<sha>` version yields the commit whatever the SHA's length,
