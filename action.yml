@@ -13,7 +13,7 @@ inputs:
     required: false
     default: "shard.lock"
   output_file:
-    description: Output file path (if not specified, outputs to stdout)
+    description: Output file path (if not specified, the SBOM is returned in the sbom_content output)
     required: false
     default: ""
   spec_version:

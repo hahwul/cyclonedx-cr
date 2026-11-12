@@ -248,7 +248,7 @@ describe CycloneDX::Validator do
     end
 
     it "passes a valid hash algorithm" do
-      hashes = [CycloneDX::Hash.new(algorithm: "SHA-512", content: "deadbeef")]
+      hashes = [CycloneDX::Hash.new(algorithm: "SHA-512", content: "deadbeef" * 16)]
       comp = CycloneDX::Component.new(name: "lib", version: "1.0", hashes: hashes)
       bom = CycloneDX::BOM.new([comp], "1.6")
       validator = CycloneDX::Validator.new
@@ -405,6 +405,92 @@ describe CycloneDX::Validator do
       comp = CycloneDX::Component.new(name: "a", version: "1",
         evidence: CycloneDX::Evidence.new(identity: [identity]))
       CycloneDX::Validator.new.validate(CycloneDX::BOM.new([comp], "1.6")).should be_true
+    end
+
+    it "accepts a parsed BOM without a serial number" do
+      # serialNumber is optional in every version.
+      bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"1.6","version":1}))
+      CycloneDX::Validator.new.validate(bom).should be_true
+    end
+
+    it "rejects a BOM version below 1 from 1.5 on" do
+      # `xs:positiveInteger` from 1.5, `minimum: 1` in the 1.7 JSON schema; 1.4
+      # types it `xs:integer`.
+      {"1.4" => true, "1.5" => false, "1.7" => false}.each do |spec_version, ok|
+        bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"#{spec_version}","version":0}))
+        validator = CycloneDX::Validator.new
+        validator.validate(bom).should eq(ok)
+        validator.errors.any?(&.path.== "$.version").should eq(!ok)
+      end
+    end
+
+    it "rejects hash content that is not a hex digest" do
+      ok = CycloneDX::Hash.new("SHA-1", "a" * 40)
+      bad = CycloneDX::Hash.new("SHA-256", "not-hex")
+      comp = CycloneDX::Component.new(name: "a", version: "1", hashes: [ok, bad])
+      validator = CycloneDX::Validator.new
+      validator.validate(CycloneDX::BOM.new([comp], "1.6")).should be_false
+      validator.errors.map(&.path).should eq(["$.components[0].hashes[1].content"])
+    end
+
+    it "accepts only timestamps valid as both RFC 3339 and xs:dateTime" do
+      {
+        "2020-01-01T00:00:00Z"          => true,
+        "2020-01-01T23:59:59.123+14:00" => true,
+        "2020-01-01T00:00:00-05:30"     => true,
+        "2020-01-01 00:00:00Z"          => false, # xs:dateTime needs 'T'
+        "2020-01-01t00:00:00z"          => false, # and upper case
+        "2020-01-01T24:00:00Z"          => false, # RFC 3339 hours are 00-23
+        "2020-01-01T00:00:00+25:00"     => false,
+        "2020-01-01T00:00:00+14:30"     => false, # beyond xs:dateTime's ±14:00
+        "2020-01-01T00:00:00"           => false, # RFC 3339 needs an offset
+        "2020-02-30T00:00:00Z"          => false,
+      }.each do |timestamp, ok|
+        metadata = CycloneDX::Metadata.new(timestamp: timestamp)
+        note = CycloneDX::Annotation.new(subjects: [] of String, text: "x", timestamp: timestamp,
+          annotator: CycloneDX::Annotator.new(organization: CycloneDX::OrganizationalEntity.new(name: "o")))
+        bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", metadata: metadata, annotations: [note])
+        validator = CycloneDX::Validator.new
+        validator.validate(bom).should eq(ok), "#{timestamp}: #{validator.errors.map(&.to_s)}"
+        validator.errors.map(&.path).should eq(ok ? [] of String : ["$.metadata.timestamp", "$.annotations[0].timestamp"])
+      end
+    end
+
+    it "reports invalid UTF-8 instead of raising" do
+      bad = String.new(Bytes[0xff, 0xfe])
+      bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"1.6","serialNumber":"#{bad}",
+        "metadata":{"timestamp":"#{bad}"},"components":[{"type":"library","name":"#{bad}","cpe":"#{bad}",
+        "hashes":[{"alg":"MD5","content":"#{bad}"}]}]}))
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.map(&.path).sort!.should eq([
+        "$", "$.components[0].cpe", "$.components[0].hashes[0].content",
+        "$.metadata.timestamp", "$.serialNumber",
+      ])
+    end
+
+    it "validates components and services wherever they appear" do
+      bad = CycloneDX::Component.new(name: "", version: "1")
+      bad_svc = CycloneDX::Service.new(name: "")
+      pedigree = CycloneDX::Pedigree.new(ancestors: [bad], descendants: [bad], variants: [bad])
+      comp = CycloneDX::Component.new(name: "a", version: "1", pedigree: pedigree)
+      metadata = CycloneDX::Metadata.new(tool_components: [bad], tool_services: [bad_svc])
+      vuln = CycloneDX::Vulnerability.new(id: "CVE-1", tool_components: [bad], tool_services: [bad_svc])
+      note = CycloneDX::Annotation.new(subjects: [] of String, text: "x",
+        annotator: CycloneDX::Annotator.new(component: bad))
+      bom = CycloneDX::BOM.new([comp], "1.6", metadata: metadata, vulnerabilities: [vuln], annotations: [note])
+      validator = CycloneDX::Validator.new
+      validator.validate(bom).should be_false
+      validator.errors.map(&.path).sort!.should eq([
+        "$.annotations[0].annotator.component.name",
+        "$.components[0].pedigree.ancestors[0].name",
+        "$.components[0].pedigree.descendants[0].name",
+        "$.components[0].pedigree.variants[0].name",
+        "$.metadata.tools.components[0].name",
+        "$.metadata.tools.services[0].name",
+        "$.vulnerabilities[0].tools.components[0].name",
+        "$.vulnerabilities[0].tools.services[0].name",
+      ])
     end
 
     it "formats error messages with to_s" do

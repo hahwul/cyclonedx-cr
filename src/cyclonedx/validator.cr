@@ -49,6 +49,8 @@ module CycloneDX
     SERIAL_NUMBER_PATTERN =
       /\Aurn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
+    BOM_VERSION_MIN_ONE_SINCE = "1.5"
+
     def validate(bom : BOM) : Bool
       @errors.clear
       @warnings.clear
@@ -60,8 +62,13 @@ module CycloneDX
       @spec_version = bom.spec_version
       add_error("$.bomFormat", "must be 'CycloneDX'") unless bom.bom_format == "CycloneDX"
       add_error("$.specVersion", "must be a supported version") unless BOM::SUPPORTED_VERSIONS.includes?(bom.spec_version)
-      unless bom.serial_number.matches?(SERIAL_NUMBER_PATTERN)
-        add_error("$.serialNumber", "'#{bom.serial_number}' is not a 'urn:uuid:' RFC 4122 URN")
+      if (serial = bom.serial_number) && !utf8_match?(serial, SERIAL_NUMBER_PATTERN)
+        add_error("$.serialNumber", "'#{serial}' is not a 'urn:uuid:' RFC 4122 URN")
+      end
+      # A positive integer from 1.5 on: `xs:positiveInteger` in the XSDs (1.4's
+      # is `xs:integer`) and `minimum: 1` in the 1.7 JSON schema.
+      if bom.bom_version < 1 && !VersionGate.newer?(BOM_VERSION_MIN_ONE_SINCE, bom.spec_version)
+        add_error("$.version", "must be at least 1")
       end
 
       bom.components.each_with_index do |comp, i|
@@ -102,6 +109,16 @@ module CycloneDX
         validate_metadata(md, "$.metadata")
       end
 
+      bom.annotations.try &.each_with_index do |note, i|
+        path = "$.annotations[#{i}]"
+        if (timestamp = note.timestamp) && !valid_timestamp?(timestamp)
+          add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
+        end
+        next unless annotator = note.annotator
+        annotator.component.try { |comp| validate_component(comp, "#{path}.annotator.component") }
+        annotator.service.try { |svc| validate_service(svc, "#{path}.annotator.service") }
+      end
+
       validate_document(bom)
       validate_spec_version_fields(bom)
     end
@@ -130,7 +147,11 @@ module CycloneDX
     # declarations and definitions, and any hand-written traversal would miss the
     # ones added later. Every `bom-ref` in the document is found by construction.
     private def validate_document(bom : BOM)
-      document = JSON.parse(bom.to_json)
+      json = bom.to_json
+      # JSON text is UTF-8 (RFC 8259 §8.1), but `from_json` keeps invalid
+      # byte sequences inside strings as they are, and so does `to_json`.
+      add_error("$", "contains invalid UTF-8") unless json.valid_encoding?
+      document = JSON.parse(json)
       defined = {} of String => String
       references = [] of {String, String}
 
@@ -279,7 +300,7 @@ module CycloneDX
       end
 
       if cpe = comp.cpe
-        unless cpe.matches?(CPE_PATTERN)
+        unless utf8_match?(cpe, CPE_PATTERN)
           add_error("#{path}.cpe", "'#{cpe}' is not a well-formed CPE")
         end
       end
@@ -306,10 +327,23 @@ module CycloneDX
         validate_evidence(evidence, "#{path}.evidence")
       end
 
-      if sub = comp.components
-        sub.each_with_index do |c, i|
-          validate_component(c, "#{path}.components[#{i}]")
-        end
+      validate_components(comp.components, "#{path}.components")
+      if pedigree = comp.pedigree
+        validate_components(pedigree.ancestors, "#{path}.pedigree.ancestors")
+        validate_components(pedigree.descendants, "#{path}.pedigree.descendants")
+        validate_components(pedigree.variants, "#{path}.pedigree.variants")
+      end
+    end
+
+    private def validate_components(components : Array(Component)?, path : String)
+      components.try &.each_with_index do |c, i|
+        validate_component(c, "#{path}[#{i}]")
+      end
+    end
+
+    private def validate_services(services : Array(Service)?, path : String)
+      services.try &.each_with_index do |s, i|
+        validate_service(s, "#{path}[#{i}]")
       end
     end
 
@@ -355,9 +389,16 @@ module CycloneDX
       end
     end
 
+    # `hash-content` (JSON) / `hashValue` (XSD), identical in every version: the
+    # hex digest of one of the lengths the algorithms produce.
+    HASH_CONTENT_PATTERN = /\A(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|[a-fA-F0-9]{64}|[a-fA-F0-9]{96}|[a-fA-F0-9]{128})\z/
+
     private def validate_hash(hash : Hash, path : String)
       unless Hash::VALID_ALGORITHMS.includes?(hash.algorithm)
         add_error("#{path}.alg", "invalid hash algorithm '#{hash.algorithm}', valid: #{Hash::VALID_ALGORITHMS.join(", ")}")
+      end
+      unless utf8_match?(hash.content, HASH_CONTENT_PATTERN)
+        add_error("#{path}.content", "'#{hash.content}' is not a hex digest of 32, 40, 64, 96 or 128 characters")
       end
     end
 
@@ -376,11 +417,7 @@ module CycloneDX
     private def validate_service(svc : Service, path : String)
       add_error("#{path}.name", "must not be empty") if svc.name.empty?
 
-      if sub = svc.services
-        sub.each_with_index do |s, i|
-          validate_service(s, "#{path}.services[#{i}]")
-        end
-      end
+      validate_services(svc.services, "#{path}.services")
     end
 
     private def validate_formula(formula : Formula, path : String)
@@ -410,6 +447,9 @@ module CycloneDX
     end
 
     private def validate_vulnerability(vuln : Vulnerability, path : String)
+      validate_components(vuln.tool_components, "#{path}.tools.components")
+      validate_services(vuln.tool_services, "#{path}.tools.services")
+
       if analysis = vuln.analysis
         if state = analysis.state
           unless VulnerabilityAnalysis::VALID_STATES.includes?(state)
@@ -488,16 +528,34 @@ module CycloneDX
       if comp = metadata.component
         validate_component(comp, "#{path}.component")
       end
+      # The tools object form (1.5+) holds full components and services too.
+      validate_components(metadata.tool_components, "#{path}.tools.components")
+      validate_services(metadata.tool_services, "#{path}.tools.services")
     end
 
     # Both schema families type timestamps as a date-time (`xs:dateTime` /
     # `format: date-time`), so a free-form string is a validation failure
     # downstream rather than here.
+    #
+    # Only the form both accept passes: RFC 3339 requires the offset and hours
+    # 00-23, and `xs:dateTime` requires an upper-case `T` (no space) and `Z`, and
+    # an offset within ±14:00. `Time.parse_rfc3339` alone took a space, lower
+    # case, `24:00:00` and a `+25:00` offset. It still checks the calendar:
+    # February 30 raised ArgumentError out of `validate`.
+    TIMESTAMP_PATTERN = /\A\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))\z/
+
     private def valid_timestamp?(timestamp : String) : Bool
+      return false unless utf8_match?(timestamp, TIMESTAMP_PATTERN)
       Time.parse_rfc3339(timestamp)
       true
-    rescue Time::Format::Error
+    rescue Time::Format::Error | ArgumentError # ArgumentError: no such day (February 30)
       false
+    end
+
+    # `matches?` raises ArgumentError on invalid UTF-8; such a value is reported
+    # once by `validate_document` and fails the pattern here.
+    private def utf8_match?(value : String, pattern : Regex) : Bool
+      value.valid_encoding? && value.matches?(pattern)
     end
 
     private def add_error(path : String, message : String)

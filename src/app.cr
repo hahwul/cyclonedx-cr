@@ -228,19 +228,15 @@ class App
     true
   end
 
-  # Validates that required input files exist.
+  # Validates that required input files exist. Anything readable that is not a
+  # directory counts, not just a regular file: `-i /dev/stdin` and a shell
+  # process substitution (`-s <(...)`) are pipes.
   private def validate_input_files(options : Options) : Bool
-    unless File.file?(options.shard_file)
-      STDERR.puts "Error: `#{options.shard_file}` not found."
-      return false
+    {options.shard_file, options.shard_lock_file}.all? do |path|
+      next true if File.exists?(path) && !File.directory?(path)
+      STDERR.puts "Error: `#{path}` not found."
+      false
     end
-
-    unless File.file?(options.shard_lock_file)
-      STDERR.puts "Error: `#{options.shard_lock_file}` not found."
-      return false
-    end
-
-    true
   end
 
   # Generates the BOM from input files.
@@ -498,10 +494,10 @@ class App
   # valid one built from real SPDX license and exception ids.
   #
   # spdx.cr's parser is lenient: it skips surrounding whitespace, takes `and`
-  # for `AND` and `MIT +` for `MIT+`, and only checks the grammar, so a string of
+  # for `AND`, and only checks the grammar, so a string of
   # bogus ids ("Foo AND Bar") parses too. The CycloneDX `expression` field is "a
   # valid SPDX license expression", so the parse tree is checked and re-rendered
-  # instead: ids in their list casing, operators upper case, `+` attached.
+  # instead: ids in their list casing, operators upper case.
   # Deprecated ids are still valid SPDX and are kept.
   private def canonical_spdx_expression(license : String) : String?
     render_spdx(Spdx.parse(license))

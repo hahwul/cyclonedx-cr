@@ -162,6 +162,18 @@ describe "App Integration" do
       $?.success?.should be_false
     end
 
+    it "reads inputs from pipes such as /dev/stdin" do
+      output = `cat #{FIXTURES}/shard.lock | #{BINARY} -s #{FIXTURES}/shard.yml -i /dev/stdin 2>&1`
+      $?.success?.should be_true
+      JSON.parse(output)["components"].as_a.should_not be_empty
+    end
+
+    it "errors when an input is a directory" do
+      output = `#{BINARY} -s #{FIXTURES} -i #{FIXTURES}/shard.lock 2>&1`
+      output.should contain("not found")
+      $?.success?.should be_false
+    end
+
     it "reports a YAML syntax error accurately for malformed YAML" do
       output = `#{BINARY} -s #{FIXTURES}/invalid_syntax_shard.yml -i #{FIXTURES}/empty_lock.lock 2>&1`
       $?.success?.should be_false
@@ -439,7 +451,9 @@ describe "App Integration" do
       "GPL-2.0-or-later WITH Classpath-exception-2.0" => {"expression", "GPL-2.0-or-later WITH Classpath-exception-2.0"},
       "Foo+"                                          => {"name", "Foo+"},
       " MIT\n"                                        => {"id", "MIT"},
-      "MIT +"                                         => {"expression", "MIT+"},
+      "MIT +"                                         => {"name", "MIT +"},
+      "LicenseRef-foo_bar"                            => {"name", "LicenseRef-foo_bar"},
+      "DocumentRef-a : LicenseRef-b"                  => {"name", "DocumentRef-a : LicenseRef-b"},
       "mit and apache-2.0+"                           => {"expression", "MIT AND Apache-2.0+"},
       "MIT AND BSD-2-Clause OR Apache-2.0"            => {"expression", "(MIT AND BSD-2-Clause) OR Apache-2.0"},
       "(MIT OR ISC) AND Apache-2.0"                   => {"expression", "(MIT OR ISC) AND Apache-2.0"},

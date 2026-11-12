@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Breaking
+- `CycloneDX::BOM#serial_number` is `String?`: a parsed BOM without
+  `serialNumber` (valid in every version) has none. `BOM.new` still always
+  assigns one, so only code reading it from a parsed BOM needs a nil check.
 - From spec 1.5 on, `metadata.tools` is the `{"components": [...]}` object, with
   cyclonedx-cr as an `application` component (`group: hahwul`), instead of the
   flat list 1.5 deprecated. 1.4 output keeps the list. Consumers that read
@@ -12,10 +15,35 @@
   as an `expression`, not a license `name`. Only text that is not a valid SPDX
   expression becomes a `name`; a bare id is still `license.id`. Expressions are
   written in canonical form (list casing for ids and exceptions, upper-case
-  operators, `MIT+` for `MIT +`), so `mit and apache-2.0` becomes
-  `MIT AND Apache-2.0` instead of a `name`, and ` MIT` becomes `license.id`.
+  operators), so `mit and apache-2.0` becomes `MIT AND Apache-2.0` instead of
+  a `name`, and ` MIT` becomes `license.id`.
+
+### Fixed
+- `BOM.from_json` no longer rejects a document without `serialNumber`, which is
+  optional in every CycloneDX version (most VEX documents omit it). It stays
+  absent on output.
+- `to_xml` wrote `version="1"` whatever the BOM's `version` was; it now writes
+  the same value as `to_json`.
+- `Validator` raised `ArgumentError` on a string with invalid UTF-8 (from
+  `from_json`) and on an impossible date such as `2020-02-30T00:00:00Z`. It now
+  reports both as errors.
+- `Validator` accepted timestamps the schemas reject (a space instead of `T`,
+  lower case, `24:00:00`, a `+25:00` offset), hash content that is not a hex
+  digest, and a BOM `version` below 1 (1.5+). It also skipped components and
+  services in `metadata.tools`, `vulnerabilities[].tools`, `pedigree` and
+  annotators, and annotation timestamps.
+- The CLI rejected a pipe as input (`-i /dev/stdin`, `-s <(...)`) as "not
+  found".
+- A blank `commit:`, `tag:` or `branch:` in a v1.0 shard.lock reads as absent,
+  as `version` already did, instead of dropping the PURL version.
 
 ### Changed
+- spdx.cr is updated to its current main. Text it now rejects as an SPDX
+  expression is emitted as a license `name` instead of an `expression`: a
+  detached `+` (`MIT +`, which SPDX Annex D does not allow), a malformed
+  `LicenseRef-`/`DocumentRef-` idstring (`LicenseRef-foo_bar`), white space
+  around the `:` of a `DocumentRef-…:LicenseRef-…`, and more than 10,000
+  AND/OR operators.
 - A `+git.commit.<sha>` version yields the commit whatever the SHA's length,
   matching shards's own rule (`[0-9a-f]+` after a version). A SHA shorter than
   7 characters used to leave the composite version in the forge PURL.
