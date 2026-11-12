@@ -43,6 +43,12 @@ class App
   # The structured `component.authors` array was introduced in 1.6.
   AUTHORS_MIN_VERSION = "1.6"
 
+  # The `metadata.tools` object form (`{components, services}`) was introduced
+  # in 1.5, which deprecated the older flat list of tools.
+  TOOLS_OBJECT_MIN_VERSION = "1.5"
+  TOOL_VENDOR              = "hahwul"
+  TOOL_NAME                = "cyclonedx-cr"
+
   # Under `--reproducible` the two fields that would otherwise change on every
   # run are pinned: the timestamp to the Unix epoch and the serial number to the
   # RFC 4122 nil UUID, which is the conventional "no identity assigned" value.
@@ -255,9 +261,7 @@ class App
       build_dependency(name, details, refs[name], optional.includes?(name) ? SCOPE_OPTIONAL : SCOPE_REQUIRED)
     end
 
-    tool = CycloneDX::Tool.new(vendor: "hahwul", name: "cyclonedx-cr", version: VERSION)
-    metadata = CycloneDX::Metadata.new(
-      component: main_component, tools: [tool], timestamp: bom_timestamp(options))
+    metadata = build_metadata(main_component, options)
 
     dep_graph, aggregates = build_dependency_graph(shard.name, main_ref, direct, declared, refs)
 
@@ -269,6 +273,20 @@ class App
       compositions: build_compositions(aggregates),
       serial_number: options.serial_number
     )
+  end
+
+  # `metadata`, recording this tool in `tools`. From 1.5 the flat list of tools
+  # is deprecated in favour of the `{components, services}` object, so the tool
+  # is described as an application component there; 1.4 has only the list. The
+  # vendor becomes the component `group`, the mapping the CycloneDX libraries
+  # use when converting between the two forms.
+  private def build_metadata(main_component : CycloneDX::Component, options : Options) : CycloneDX::Metadata
+    legacy = CycloneDX::VersionGate.newer?(TOOLS_OBJECT_MIN_VERSION, options.spec_version)
+    CycloneDX::Metadata.new(
+      component: main_component, timestamp: bom_timestamp(options),
+      tools: (legacy ? [CycloneDX::Tool.new(vendor: TOOL_VENDOR, name: TOOL_NAME, version: VERSION)] : nil),
+      tool_components: (legacy ? nil : [CycloneDX::Component.new(name: TOOL_NAME, version: VERSION,
+        group: TOOL_VENDOR, component_type: COMPONENT_TYPE_APPLICATION)]))
   end
 
   # Groups the graph nodes by how much is known about their edges, so a consumer
@@ -444,54 +462,80 @@ class App
   # this.
   private SCP_GIT_PATTERN = /\A([\w.\-]+)@([\w.\-]+):(?!\/)(.+)\z/
 
-  # SPDX license expression operators
-  private SPDX_EXPRESSION_PATTERN = /\b(AND|OR|WITH)\b/
-
   # `shard.yml` author entries: `Name <email>`, where the name may be absent.
   # The bracketed part must look like an address (`local@domain`, RFC 5322
   # addr-spec): the JSON schemas type `email` as `idn-email`, so `Foo <n/a>`
   # stays a plain name rather than becoming a schema-invalid email.
   private AUTHOR_PATTERN = /\A([^<]*)<\s*([^<>@\s]+@[^<>@\s]+)\s*>\s*\z/
 
-  # Build a licenses array for a shard.yml license field.
+  # Build a licenses array for a shard.yml license field, following the
+  # CycloneDX license choice:
   #
-  # - Strings that contain an AND/OR/WITH operator AND parse as a valid SPDX
-  #   expression become a LicenseExpression. The validity check matters: a
-  #   free-form string like "Free for personal OR commercial use" contains
-  #   "OR" but is not a license expression, so it must NOT be emitted as one
-  #   (an invalid `expression` fails CycloneDX/SPDX validation).
-  # - Single identifiers that exist in the SPDX catalog use the canonical `id`.
-  # - Everything else falls back to the free-form `name`.
+  # - A single identifier from the SPDX license list becomes `license.id`. That
+  #   is the only form the `id` field (an enum of exactly those ids) accepts.
+  # - Anything else that is a valid SPDX expression becomes `expression`. That
+  #   covers compound expressions and also single terms that are not a bare
+  #   list id: `Apache-2.0+`, `LicenseRef-Foo`, `MIT WITH LLVM-exception`.
+  # - Everything else is free text and falls back to `license.name`. Validity
+  #   matters here: "Free for personal OR commercial use" contains "OR" but is
+  #   no license expression, and an invalid `expression` fails validation.
+  #
+  # Both the id and the expression are written in canonical form (see
+  # `canonical_spdx_expression`), never as the raw shard.yml text.
   private def build_licenses(license : String) : Array(CycloneDX::License | CycloneDX::LicenseExpression)
-    if license =~ SPDX_EXPRESSION_PATTERN && valid_spdx_expression?(license)
-      [CycloneDX::LicenseExpression.new(expression: license)] of CycloneDX::License | CycloneDX::LicenseExpression
-    elsif Spdx.license?(license)
-      canonical = Spdx.find_license(license).id
-      [CycloneDX::License.new(id: canonical)] of CycloneDX::License | CycloneDX::LicenseExpression
-    else
-      [CycloneDX::License.new(name: license)] of CycloneDX::License | CycloneDX::LicenseExpression
+    expression = canonical_spdx_expression(license)
+    choice = if expression.nil?
+               CycloneDX::License.new(name: license)
+             elsif Spdx.license?(expression)
+               CycloneDX::License.new(id: expression)
+             else
+               CycloneDX::LicenseExpression.new(expression: expression)
+             end
+    [choice] of CycloneDX::License | CycloneDX::LicenseExpression
+  end
+
+  # `license` rewritten as a canonical SPDX expression, or nil when it is not a
+  # valid one built from real SPDX license and exception ids.
+  #
+  # spdx.cr's parser is lenient: it skips surrounding whitespace, takes `and`
+  # for `AND` and `MIT +` for `MIT+`, and only checks the grammar, so a string of
+  # bogus ids ("Foo AND Bar") parses too. The CycloneDX `expression` field is "a
+  # valid SPDX license expression", so the parse tree is checked and re-rendered
+  # instead: ids in their list casing, operators upper case, `+` attached.
+  # Deprecated ids are still valid SPDX and are kept.
+  private def canonical_spdx_expression(license : String) : String?
+    render_spdx(Spdx.parse(license))
+  rescue Spdx::ParseError
+    nil
+  end
+
+  private def render_spdx(node : Spdx::Expression::Node) : String?
+    case node
+    when Spdx::Expression::LicenseNode
+      return unless Spdx.license?(node.id)
+      id = Spdx.find_license(node.id).id
+      node.or_later? ? "#{id}+" : id
+    when Spdx::Expression::LicenseRefNode
+      node.to_s
+    when Spdx::Expression::WithExceptionNode
+      # SPDX allows WITH only after a simple expression, never a group.
+      return unless node.license.is_a?(Spdx::Expression::LicenseNode | Spdx::Expression::LicenseRefNode)
+      return unless Spdx.exception?(node.exception)
+      license = render_spdx(node.license) || return
+      "#{license} WITH #{Spdx.find_exception(node.exception).id}"
+    when Spdx::Expression::CompoundNode
+      left = render_spdx_operand(node.left, node.operator) || return
+      right = render_spdx_operand(node.right, node.operator) || return
+      "#{left} #{node.operator} #{right}"
     end
   end
 
-  # True when `license` is a SPDX license expression that is both grammatically
-  # valid AND built entirely from real SPDX license/exception identifiers.
-  #
-  # `Spdx.valid_expression?` only checks the grammar, so a well-shaped string of
-  # bogus identifiers ("Foo AND Bar", "MIT WITH Bogus-Exception") passes it. The
-  # CycloneDX `expression` field is defined as "a valid SPDX license
-  # expression", so such strings must fall through to the free-form `name`
-  # branch instead of being emitted as an expression. Deprecated ids and
-  # non-canonical casing are still valid expressions (they emit a non-"Unknown"
-  # warning), so they are intentionally accepted.
-  private def valid_spdx_expression?(license : String) : Bool
-    return false unless Spdx.valid_expression?(license)
-    # spdx.cr reports unknown ids as "Unknown ..." warnings in the pinned
-    # release and as errors (making `valid?` false) from the next one; this
-    # holds for both.
-    result = Spdx.validate_expression(license)
-    result.valid? && result.warnings.none?(&.starts_with?("Unknown"))
-  rescue Spdx::ParseError
-    false
+  # An operand of `operator`, parenthesised when it is a compound of the other
+  # operator. Same-operator chains need none: AND and OR are associative.
+  private def render_spdx_operand(node : Spdx::Expression::Node,
+                                  operator : Spdx::Expression::CompoundNode::Operator) : String?
+    rendered = render_spdx(node) || return
+    node.is_a?(Spdx::Expression::CompoundNode) && node.operator != operator ? "(#{rendered})" : rendered
   end
 
   # Parses the main component information from a parsed ShardFile.

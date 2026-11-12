@@ -19,7 +19,11 @@ class ShardLockEntry
   # identifies the tree, so it is what a `pkg:github`/`gitlab`/`bitbucket` PURL
   # should carry — those PURL types define the version as a tag or a commit, and
   # the composite string is neither.
-  GIT_COMMIT_VERSION = /\+git\.commit\.([0-9a-f]{7,40})\z/
+  #
+  # The SHA is matched as shards's own `VERSION_AT_GIT_COMMIT` (src/config.cr)
+  # does: any run of lowercase hex, abbreviated or not, since shards resolves a
+  # commit by prefix. The version before it is not checked.
+  GIT_COMMIT_VERSION = /\+git\.commit\.([0-9a-f]+)\z/
 
   # The version of the locked dependency. Absent for `path:` entries (and some
   # other lock shapes), in which case it stays nil rather than being filled in

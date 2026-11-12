@@ -162,6 +162,23 @@ describe ShardLockFile do
         .should eq("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
     end
 
+    it "takes the commit from any hex SHA shards accepts, as shards does" do
+      # shards's VERSION_AT_GIT_COMMIT is `<version>+git.commit.[0-9a-f]+`: a SHA
+      # of any length, since it resolves commits by prefix.
+      {"abc" => "abc", "a" * 41 => "a" * 41, "21ac950" => "21ac950"}.each do |sha, expected|
+        entry = ShardLockEntry.from_yaml("github: o/r\nversion: 0.1.0+git.commit.#{sha}")
+        entry.commit.should eq(expected)
+      end
+    end
+
+    it "takes no commit from a version shards would not parse as one" do
+      ["0.1.0+git.commit.ABC", "0.1.0+git.commit.", "0.1.0+git.commit.abcx",
+       "0.1.0+git.commit.abc\n", "0.1.0+hg.commit.abc"].each do |version|
+        entry = ShardLockEntry.from_yaml({"github" => "o/r", "version" => version}.to_yaml)
+        entry.commit.should be_nil
+      end
+    end
+
     it "parses an empty shards section" do
       yaml = <<-YAML
         version: 2.0

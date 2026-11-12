@@ -144,10 +144,11 @@ module CycloneDX
         "provides" => "1.6",
       },
       # `tools` is a flat list of `toolType` in 1.4 and gained the
-      # components/services object form in 1.5. There is no spec-defined way to
-      # express the object form in 1.4, so it is dropped rather than guessed at;
-      # callers targeting 1.4 should populate the legacy `tools:` list, which is
-      # valid at every version and is what the CLI emits.
+      # components/services object form in 1.5, which deprecated the list. There
+      # is no spec-defined way to express the object form in 1.4, so it is dropped
+      # rather than guessed at; callers targeting 1.4 should populate the legacy
+      # `tools:` list instead. The CLI does exactly that: the list for 1.4, the
+      # object form from 1.5 on.
       tools: {
         # 1.5+
         "components" => "1.5",

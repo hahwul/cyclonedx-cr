@@ -8,7 +8,7 @@ shards:
     version: 1.2.3
   gh_buildmeta:
     github: hahwul/spdx.cr
-    version: "0.1.0+git.commit.abc"
+    version: "0.1.0+build.5"
   bb_url:
     git: https://bitbucket.org/Team/Proj.git
     version: 3.0.0
