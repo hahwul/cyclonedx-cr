@@ -1,0 +1,8 @@
+version: 2.0
+shards:
+  ../graph/lib/alpha:
+    github: owner/escape
+    version: 1.0.0
+  "nul\0byte":
+    github: owner/nul
+    version: 1.0.0

@@ -312,6 +312,13 @@ class App
   # restored from an older lock), whose edges would be the wrong ones.
   private def installed_shard_dependencies(name : String, details : ShardLockEntry, install_dir : String,
                                            installed : Hash(String, ShardLockEntry)) : Array(String)?
+    # The name comes from shard.lock; one that is not a single path segment
+    # (`../x`, `a/b`) is not a directory shards could have installed to, and a
+    # NUL byte cannot be in a path at all.
+    if name.matches?(/[\/\\\0]/) || name.in?(".", "..")
+      warn("`#{name}` is not a valid shard name; its dependencies are unknown.")
+      return
+    end
     path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
     if (stale = installed[name]?.try(&.version)) && stale != details.version
       warn("installed `#{name}` is #{stale} but shard.lock pins #{details.version}; run `shards install`. Its dependencies are unknown.")
@@ -551,11 +558,15 @@ class App
   end
 
   # Builds an external reference for a shard.yml URL field, or nil when the URL
-  # is missing or not a recognised http/https/git form. The URL is normalised so
-  # the emitted `url` is always a valid URI (see `normalize_url`).
+  # is missing, not a recognised http/https/git/ssh form, or cannot be cleaned
+  # (see `normalize_url`).
   private def build_external_reference(ref_type : String, url : String?) : CycloneDX::ExternalReference?
     return unless url && url =~ URL_PATTERN
-    CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalize_url(url))
+    # A remote's query or fragment means nothing to git, but `?private_token=`
+    # is a way to authenticate, so neither is published. A website keeps them.
+    url = strip_url_query_fragment(url) if ref_type == REF_TYPE_VCS
+    normalized = normalize_url(url) || return
+    CycloneDX::ExternalReference.new(ref_type: ref_type, url: normalized)
   end
 
   # Rewrites an scp-style git remote (`git@host:owner/repo.git`) to its
@@ -567,16 +578,23 @@ class App
   # keeps that URL verbatim, and an SBOM is a document meant to be published.
   # Over ssh the user is the account to log in as (`git@`), not a secret, so
   # only a password is removed there.
-  private def normalize_url(url : String) : String
+  #
+  # nil when the URL cannot be parsed (a bad port), or when its authority still
+  # holds an `@` after parsing (`user:p@ss@host`): the parser splits at the
+  # first `@`, so part of the secret would be emitted as the host.
+  private def normalize_url(url : String) : String?
     if m = url.match(SCP_GIT_PATTERN)
       url = "ssh://#{m[1]}@#{m[2]}/#{m[3]}"
     end
 
     uri = URI.parse(url)
+    return if uri.host.try(&.includes?('@'))
     return url unless uri.user || uri.password
     uri.password = nil
     uri.user = nil unless uri.scheme == "ssh"
     uri.to_s
+  rescue URI::Error | OverflowError # a port too big for Int32
+    nil
   end
 
   # Reads the locked shards from `shard.lock`, dropping entries that cannot
@@ -724,12 +742,20 @@ class App
   # version to `GitTagRef.new "v#{version}"`), so that is the tag the PURL names.
   # The forges do not resolve `X.Y.Z` to `vX.Y.Z`: the bare form is a 404.
   #
-  # A `version: 1.0` lock file instead names the reference directly, so `tag:` is
-  # the last fallback. `branch:` deliberately is not: a branch name is neither a
-  # tag nor a commit, and it identifies a moving target rather than the tree that
+  # A `version: 1.0` lock file may instead name the reference directly; an
+  # explicit `tag:` is the literal tag, so it wins over the one derived from
+  # `version`. `branch:` is never used: a branch name is neither a tag nor a
+  # commit, and it identifies a moving target rather than the tree that
   # was actually installed.
   private def purl_version(details : ShardLockEntry) : String?
-    details.commit || details.version.try { |version| "v#{version}" } || details.tag
+    details.commit || details.tag || details.version.try { |version| release_tag(version) }
+  end
+
+  # The tag shards installs `version` from. A `+` means build metadata the
+  # commit pattern did not recognise; that string is no release, so it is kept
+  # as it is rather than turned into a tag name that cannot exist.
+  private def release_tag(version : String) : String
+    version.includes?('+') ? version : "v#{version}"
   end
 
   # Cleans a `github:`/`gitlab:` shorthand value from `shard.lock`. shards only
@@ -781,7 +807,7 @@ class App
     host = uri.host
     return if host.nil? || host.empty?
     {host.downcase, uri.path}
-  rescue URI::Error
+  rescue URI::Error | OverflowError # a port too big for Int32
     nil
   end
 

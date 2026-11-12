@@ -128,9 +128,17 @@ describe ShardFile do
             github: o/t
           ~:
             github: o/null
+          010:
+            github: o/octal
+          0x1F:
+            github: o/hex
+          1e3:
+            github: o/float
+          "~":
+            github: o/quoted
         YAML
 
-      ShardFile.from_yaml(yaml).runtime_dependency_names.should eq(Set{"2048", "true"})
+      ShardFile.from_yaml(yaml).runtime_dependency_names.should eq(Set{"2048", "true", "010", "0x1F", "1e3", "~"})
     end
   end
 

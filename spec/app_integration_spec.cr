@@ -435,7 +435,7 @@ describe "App Integration" do
 
     it "percent-encodes reserved characters in the version" do
       # '+' build metadata must be encoded as %2B per the PURL spec.
-      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@v0.1.0%2Bgit.commit.abc")
+      canon_purls["gh_buildmeta"].should eq("pkg:github/hahwul/spdx.cr@0.1.0%2Bgit.commit.abc")
     end
 
     it "emits a pkg:bitbucket PURL for bitbucket git URLs (lowercased)" do
@@ -788,13 +788,27 @@ describe "App Integration" do
       output.should_not contain("SECRETTOKEN")
 
       urls = JSON.parse(output)["components"].as_a.to_h do |c|
-        {c["name"].as_s, c["externalReferences"].as_a.map(&.["url"].as_s)}
+        {c["name"].as_s, c["externalReferences"]?.try(&.as_a.map(&.["url"].as_s)) || [] of String}
       end
       urls["token_user"].should eq(["https://github.com/owner/private.git"])
       urls["user_pass"].should eq(["https://gitlab.example.com/group/repo.git"])
       # Over ssh the user is the login, not a secret; ssh:// remotes are recorded.
       urls["ssh_user"].should eq(["ssh://git@git.example.com:2222/team/repo.git"])
       urls["ssh_pass"].should eq(["ssh://deploy@hg.example.com/repo"])
+      # A remote's query is not published: `?private_token=` authenticates.
+      urls["token_query"].should eq(["https://gitlab.example.com/group/query.git"])
+      # An unencoded `@` in the password would put part of it in the host, and a
+      # port too big to parse used to crash the run; neither is published.
+      urls["at_in_password"].should be_empty
+      urls["huge_port"].should be_empty
+    end
+
+    it "does not read a shard.yml outside the install dir for a path-like lock name" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/traversal_lock.lock 2>&1`
+      $?.success?.should be_true
+      output.should contain("is not a valid shard name")
+      # spec/fixtures/graph/lib/alpha/shard.yml depends on charlie.
+      output.should_not contain("charlie")
     end
 
     it "omits the version entirely for a dependency that has none" do

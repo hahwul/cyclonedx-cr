@@ -26,10 +26,11 @@ class ShardFile
   getter homepage : String?
   getter repository : String?
 
-  # Dependency maps (name -> source details)
-  getter dependencies : YAML::Any?
-  @[YAML::Field(key: "development_dependencies")]
-  getter development_dependencies : YAML::Any?
+  # The names declared by the `name -> source details` dependency maps.
+  @[YAML::Field(converter: ShardFile::DependencyNames)]
+  @dependencies = Set(String).new
+  @[YAML::Field(converter: ShardFile::DependencyNames)]
+  @development_dependencies = Set(String).new
 
   # Build targets (name -> {main: ...}). Their presence is what distinguishes an
   # application shard from a library one.
@@ -42,27 +43,30 @@ class ShardFile
 
   # Returns the set of dependency names declared as runtime dependencies.
   def runtime_dependency_names : Set(String)
-    dependency_names(@dependencies)
+    @dependencies
   end
 
   # Returns the set of dependency names declared as development dependencies.
   def dev_dependency_names : Set(String)
-    dependency_names(@development_dependencies)
+    @development_dependencies
   end
 
   # Collects the keys of a `name -> source details` dependency mapping. A
   # non-mapping node is not a dependency declaration, so it contributes nothing
-  # rather than raising. shards reads every key as a string, so a scalar key the
-  # YAML core schema types otherwise (`2048:`, `true:`) is still a name; only a
-  # null or blank key is dropped.
-  private def dependency_names(node : YAML::Any?) : Set(String)
-    names = Set(String).new
-    if mapping = node.try(&.as_h?)
-      mapping.each_key do |key|
-        next if key.as_a? || key.as_h?
-        key.raw.to_s.presence.try { |name| names << name }
+  # rather than raising. shards reads every key as the scalar's text, so a key
+  # the YAML core schema types otherwise is still that name: `2048:` and
+  # `true:`, and `010:` as `010`, not the integer 8 it resolves to. Only a null
+  # or blank key is dropped.
+  module DependencyNames
+    def self.from_yaml(ctx : YAML::ParseContext, node : YAML::Nodes::Node) : Set(String)
+      names = Set(String).new
+      return names unless node.is_a?(YAML::Nodes::Mapping)
+      node.each do |key, _|
+        next unless key.is_a?(YAML::Nodes::Scalar)
+        next if YAML::Schema::Core.parse_scalar(key).nil?
+        key.value.presence.try { |name| names << name }
       end
+      names
     end
-    names
   end
 end

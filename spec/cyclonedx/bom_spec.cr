@@ -403,4 +403,13 @@ describe "CycloneDX::BOM XML characters" do
     nodes[2].first_element_child.try(&.content).should eq("b\uFFFDz")
     doc.xpath_string("string(//*[local-name()='description'])").should eq("a\uFFFDb")
   end
+
+  it "replaces a NUL too, which XML::Builder refuses outright" do
+    components = [CycloneDX::Component.new(name: "a\0b", bom_ref: "a\0b", description: "c\0d")]
+    doc = XML.parse(CycloneDX::BOM.new(components, "1.6").to_xml)
+
+    doc.errors.should be_nil
+    doc.xpath_string("string(//*[local-name()='component']/@bom-ref)").should eq("a\uFFFDb")
+    doc.xpath_string("string(//*[local-name()='description'])").should eq("c\uFFFDd")
+  end
 end

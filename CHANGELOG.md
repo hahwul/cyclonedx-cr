@@ -29,8 +29,21 @@
 - `ssh://` remotes are recorded as `vcs` references like every other remote, so
   a dependency fetched over ssh from an unknown host is no longer left with no
   identifier at all.
+- A `vcs` reference drops the remote's query and fragment
+  (`?private_token=...`). A URL whose credentials cannot be split off cleanly
+  (an unencoded `@` in the password) is not recorded.
+- A git URL with a port too large to parse no longer crashes the run.
 - CSV cells starting with a tab or carriage return are quoted out too, per
   OWASP's CSV-injection guidance.
+- A NUL in any string no longer crashes XML output; it becomes U+FFFD like the
+  other characters XML cannot carry.
+- Dependency names YAML would read as numbers keep their text: `010:` is the
+  shard `010`, not `8`, so its edge to the locked shard is found.
+- A shard.lock name that is not a single path segment (`../x`) or holds a NUL
+  is not looked up under `lib/`; its dependencies are reported as unknown.
+- The release workflow and the README's Action example install shards with
+  `--skip-postinstall --skip-executables` and check out without persisting
+  the token, since only the installed `shard.yml` files are needed.
 - An empty `version: ""` in `shard.yml` or `shard.lock` is treated as absent
   instead of aborting with "the generated SBOM is not valid CycloneDX".
 - Warnings escape control characters, so a shard name or source carrying a
