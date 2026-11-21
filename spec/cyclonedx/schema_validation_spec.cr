@@ -188,3 +188,24 @@ describe "CycloneDX schema validation" do
     end
   end
 end
+describe "XML decimal serialization" do
+  it "emits small scores and confidence values without scientific notation" do
+    small = 0.000000123
+    rating = CycloneDX::VulnerabilityRating.new(score: small)
+    vulnerability = CycloneDX::Vulnerability.new(id: "example", ratings: [rating])
+    method = CycloneDX::EvidenceMethod.new(technique: "binary-analysis", confidence: small)
+    identity = CycloneDX::EvidenceIdentity.new(field: "name", confidence: small, methods: [method])
+    component = CycloneDX::Component.new(name: "library", evidence: CycloneDX::Evidence.new(identity: [identity]))
+
+    SchemaValidation::VERSIONS.each do |version|
+      bom = CycloneDX::BOM.new([component], version, vulnerabilities: [vulnerability])
+      doc = XML.parse(bom.to_xml)
+      doc.xpath_string("string(//*[local-name()='score'])").should eq("0.000000123")
+      if version != "1.4"
+        confidence = doc.xpath_nodes("//*[local-name()='confidence']")
+        confidence.map(&.content).should eq(["0.000000123", "0.000000123"])
+      end
+      assert_schema_valid(bom, "small XML decimals")
+    end
+  end
+end
