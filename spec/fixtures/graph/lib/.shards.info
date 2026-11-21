@@ -1,7 +1,7 @@
 version: 1.0
 shards:
   alpha:
-    github: owner/alpha
+    git: https://github.com/owner/alpha.git
     version: 1.0.0
   bravo:
     github: owner/bravo

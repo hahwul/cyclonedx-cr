@@ -68,10 +68,10 @@ GRAPH = "#{FIXTURES}/graph"
 # set to `install` (nil unsets it, so the default `lib/` beside shard.yml is
 # used). Returns {stdout, stderr}; stderr is kept apart so warnings can be
 # asserted on without corrupting the document.
-private def run_graph(install : String? = nil, extra = [] of String) : {String, String}
+private def run_graph(install : String? = nil, extra = [] of String, lock : String = "#{GRAPH}/shard.lock") : {String, String}
   stdout = IO::Memory.new
   stderr = IO::Memory.new
-  args = ["-s", "#{GRAPH}/shard.yml", "-i", "#{GRAPH}/shard.lock", "--reproducible"] + extra
+  args = ["-s", "#{GRAPH}/shard.yml", "-i", lock, "--reproducible"] + extra
   status = Process.run(BINARY, args, env: {"SHARDS_INSTALL_PATH" => install}, output: stdout, error: stderr)
   status.success?.should be_true
   {stdout.to_s, stderr.to_s}
@@ -696,6 +696,21 @@ describe "App Integration" do
       edges(bom).keys.should eq(["graph-root@1.0.0"])
       aggregates(bom)["unknown"].size.should eq(5)
       scopes(bom)["delta"].should eq("optional")
+    end
+
+    it "leaves the edges unknown when a same-version git dependency changed repositories" do
+      lock = File.tempname("cdx-graph", ".lock")
+      original = File.read("#{GRAPH}/shard.lock")
+      File.write(lock, original.sub("https://github.com/owner/alpha.git", "https://github.com/new-owner/alpha.git"))
+      json, err = run_graph(lock: lock)
+      bom = JSON.parse(json)
+
+      err.should contain("installed `alpha` has a different git source than shard.lock")
+      edges(bom)["graph-root@1.0.0"].should contain("alpha@1.0.0")
+      edges(bom).has_key?("alpha@1.0.0").should be_false
+      aggregates(bom)["unknown"].should eq(["alpha@1.0.0"])
+    ensure
+      File.delete?(lock) if lock
     end
 
     it "emits schema-valid graphs" do

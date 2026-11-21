@@ -320,7 +320,7 @@ class App
       return declared
     end
 
-    installed = installed_versions(install_dir)
+    installed = installed_shards(install_dir)
     locked.each do |name, details|
       declared[name] = installed_shard_dependencies(name, details, install_dir, installed)
     end
@@ -328,9 +328,8 @@ class App
   end
 
   # The edges of one installed shard, or nil (with a warning) when they cannot
-  # be trusted: its shard.yml is unreadable, or shards recorded installing a
-  # different version than shard.lock pins (a stale `lib/`, e.g. a CI cache
-  # restored from an older lock), whose edges would be the wrong ones.
+  # be trusted: its shard.yml is unreadable, or shards recorded a different
+  # version or Git source (e.g. a CI cache restored from an older lock).
   private def installed_shard_dependencies(name : String, details : ShardLockEntry, install_dir : String,
                                            installed : Hash(String, ShardLockEntry)) : Array(String)?
     # The name comes from shard.lock; one that is not a single path segment
@@ -341,9 +340,17 @@ class App
       return
     end
     path = File.join(install_dir, name, DEFAULT_SHARD_FILE)
-    if (stale = installed[name]?.try(&.version)) && stale != details.version
-      warn("installed `#{name}` is #{stale} but shard.lock pins #{details.version}; run `shards install`. Its dependencies are unknown.")
-      return
+    if entry = installed[name]?
+      if (stale = entry.version) && stale != details.version
+        warn("installed `#{name}` is #{stale} but shard.lock pins #{details.version}; run `shards install`. Its dependencies are unknown.")
+        return
+      end
+      # Shards records normalized Git sources in both files. Legacy locks
+      # can use shorthand, so compare when both entries record a Git URL.
+      if (locked_source = details.git) && (installed_source = entry.git) && locked_source != installed_source
+        warn("installed `#{name}` has a different git source than shard.lock; run `shards install`. Its dependencies are unknown.")
+        return
+      end
     end
 
     File.open(path) { |file| ShardFile.from_yaml(file) }.runtime_dependency_names.to_a
@@ -354,7 +361,7 @@ class App
 
   # What shards recorded installing (`<install dir>/.shards.info`, same shape as
   # shard.lock), or nothing when that file is absent or unreadable.
-  private def installed_versions(install_dir : String) : Hash(String, ShardLockEntry)
+  private def installed_shards(install_dir : String) : Hash(String, ShardLockEntry)
     File.open(File.join(install_dir, ".shards.info")) { |file| ShardLockFile.from_yaml(file) }.shards
   rescue IO::Error | YAML::ParseException
     {} of String => ShardLockEntry

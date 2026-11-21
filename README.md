@@ -249,10 +249,10 @@ about its edges:
 | `incomplete` | The shard declares a dependency that is missing from `shard.lock` (an out-of-sync install). |
 | `unknown` | The shard's `shard.yml` could not be read, so its edges are unknown. The shard is left out of the `dependencies` graph, since an empty `dependsOn` would claim it has none. |
 
-Anything short of `complete` is also reported on stderr, including a shard whose
-installed version (per `lib/.shards.info`) differs from the one `shard.lock` pins:
-its edges would be the wrong ones, so they are reported as `unknown`. While part
-of the runtime graph is unknown, only direct development dependencies are marked
+Anything short of `complete` is also reported on stderr. If `lib/.shards.info`
+records a different version or both files record different `git:` URLs for a
+shard, its edges are reported as `unknown`. While part of the runtime graph
+is unknown, only direct development dependencies are marked
 `optional`: a transitive shard cannot be shown to be dev-only if an unseen edge
 might reach it at runtime.
 
