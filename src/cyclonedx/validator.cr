@@ -125,7 +125,8 @@ module CycloneDX
 
     # A reference into a *different* BOM (`urn:cdx:<serial>/<version>#<bom-ref>`)
     # rather than a local `bom-ref`. Those cannot be resolved from here.
-    BOM_LINK_PREFIX = "urn:cdx:"
+    BOM_LINK_PREFIX          = "urn:cdx:"
+    BOM_LINK_ELEMENT_PATTERN = /\Aurn:cdx:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[1-9][0-9]*#.+\z/
 
     # Whole-document checks that need to see every object at once, run over the
     # serialized form.
@@ -148,8 +149,11 @@ module CycloneDX
 
       references.each do |(path, ref)|
         next if defined.has_key?(ref)
-        next if ref.starts_with?(BOM_LINK_PREFIX)
-        add_error(path, "references unknown bom-ref '#{ref}'")
+        if ref.starts_with?(BOM_LINK_PREFIX)
+          add_error(path, "invalid BOM-Link element reference '#{ref}'") unless utf8_match?(ref, BOM_LINK_ELEMENT_PATTERN)
+        else
+          add_error(path, "references unknown bom-ref '#{ref}'")
+        end
       end
     end
 

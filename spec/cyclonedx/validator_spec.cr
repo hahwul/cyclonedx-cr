@@ -256,6 +256,25 @@ describe CycloneDX::Validator do
       CycloneDX::Validator.new.validate(bom).should be_true
     end
 
+    it "rejects unresolved URNs that are not valid BOM-Link element references" do
+      component = CycloneDX::Component.new(name: "lib", bom_ref: "lib")
+      uuid = "f7b2c9de-0000-4000-8000-000000000000"
+      references = [
+        "urn:cdx:missing-uuid/1#item",
+        "urn:cdx:#{uuid}/0#item",
+        "urn:cdx:#{uuid}/1",
+        "urn:cdx:#{uuid}/1#",
+        "urn:cdx:#{uuid}/12#item",
+      ]
+      graph = [CycloneDX::Dependency.new(ref: "lib", depends_on: references)]
+      bom = CycloneDX::BOM.new([component], "1.6", dependencies: graph)
+      validator = CycloneDX::Validator.new
+
+      validator.validate(bom).should be_false
+      validator.errors.map(&.path).should eq((0..3).map { |i| "$.dependencies[0].dependsOn[#{i}]" })
+      validator.errors.all?(&.message.includes?("invalid BOM-Link")).should be_true
+    end
+
     it "detects a license with neither an id nor a name" do
       comp = CycloneDX::Component.new(name: "a", version: "1",
         licenses: [CycloneDX::License.new(url: "https://x.example")] of CycloneDX::License | CycloneDX::LicenseExpression)
