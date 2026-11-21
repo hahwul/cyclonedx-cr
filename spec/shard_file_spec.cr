@@ -118,6 +118,24 @@ describe ShardFile do
   end
 
   describe "#runtime_dependency_names" do
+    it "rejects non-empty dependency declarations that are not mappings" do
+      {"dependencies", "development_dependencies"}.each do |field|
+        {"[other]", "other"}.each do |value|
+          expect_raises(YAML::ParseException, /expected a dependency mapping/) do
+            ShardFile.from_yaml("name: demo\n#{field}: #{value}\n")
+          end
+        end
+      end
+    end
+
+    it "continues to accept empty dependency declarations" do
+      {"", "null", "{}", %("")}.each do |value|
+        shard = ShardFile.from_yaml("name: demo\ndependencies: #{value}\ndevelopment_dependencies: #{value}\n")
+        shard.runtime_dependency_names.should be_empty
+        shard.dev_dependency_names.should be_empty
+      end
+    end
+
     it "reads scalar keys as names, as shards does, and drops null ones" do
       yaml = <<-YAML
         name: my-shard

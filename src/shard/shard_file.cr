@@ -51,19 +51,23 @@ class ShardFile
     @development_dependencies
   end
 
-  # Collects the keys of a `name -> source details` dependency mapping. A
-  # non-mapping node is not a dependency declaration, so it contributes nothing
-  # rather than raising. shards reads every key as the scalar's text, so a key
+  # Collects the keys of a `name -> source details` dependency mapping.
+  # Empty declarations have no edges. Other non-mapping values are malformed
+  # and would otherwise make the graph falsely look complete.
+  # shards reads every key as the scalar's text, so a key
   # the YAML core schema types otherwise is still that name: `2048:` and
   # `true:`, and `010:` as `010`, not the integer 8 it resolves to. Only a null
   # or blank key is dropped.
   module DependencyNames
     def self.from_yaml(ctx : YAML::ParseContext, node : YAML::Nodes::Node) : Set(String)
       names = Set(String).new
-      node = resolve(node)
-      return names unless node.is_a?(YAML::Nodes::Mapping)
+      mapping = resolve(node)
+      if mapping.is_a?(YAML::Nodes::Scalar) && (mapping.value.empty? || YAML::Schema::Core.parse_null?(mapping))
+        return names
+      end
+      node.raise("expected a dependency mapping") unless mapping.is_a?(YAML::Nodes::Mapping)
       # `Core.each` expands `<<` merge keys, as YAML::Any did.
-      YAML::Schema::Core.each(node) do |key, _|
+      YAML::Schema::Core.each(mapping) do |key, _|
         key = resolve(key)
         next unless key.is_a?(YAML::Nodes::Scalar)
         next if YAML::Schema::Core.parse_null?(key)

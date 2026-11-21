@@ -653,6 +653,21 @@ describe "App Integration" do
   end
 
   describe "dependency graph" do
+    it "rejects a malformed dependency list instead of emitting a complete graph" do
+      manifest = File.tempfile("cdx-invalid-dependencies", ".yml")
+      File.write(manifest.path, "name: demo\nversion: 1.0.0\ndependencies: [other]\n")
+      stdout = IO::Memory.new
+      stderr = IO::Memory.new
+      args = ["-s", manifest.path, "-i", "#{FIXTURES}/empty_lock.lock", "--reproducible"]
+      status = Process.run(BINARY, args, output: stdout, error: stderr)
+
+      status.exit_code.should eq(1)
+      stdout.to_s.should be_empty
+      stderr.to_s.should contain("expected a dependency mapping")
+    ensure
+      manifest.try(&.delete)
+    end
+
     it "builds the real graph from the installed shards" do
       json, err = run_graph
       err.should be_empty
