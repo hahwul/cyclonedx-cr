@@ -176,6 +176,7 @@ module CycloneDX
           end
           validate_licenses_array(value, child_path) if key == "licenses"
           validate_lifecycles(value, child_path) if key == "lifecycles"
+          validate_evidence(value, child_path) if key == "evidence"
           collect_document(value, child_path, defined, references)
         end
       elsif arr = node.as_a?
@@ -320,10 +321,6 @@ module CycloneDX
         end
       end
 
-      if evidence = comp.evidence
-        validate_evidence(evidence, "#{path}.evidence")
-      end
-
       validate_components(comp.components, "#{path}.components")
       if pedigree = comp.pedigree
         validate_components(pedigree.ancestors, "#{path}.pedigree.ancestors")
@@ -379,29 +376,44 @@ module CycloneDX
       end
     end
 
-    # `evidence.identity` carries two enums the object model types as plain
-    # strings: `field` (`identityFieldType`) and each method's `technique`
-    # (`evidenceTechnique`).
-    private def validate_evidence(evidence : Evidence, path : String)
-      identities = evidence.identity
-      return unless identities
+    # Validate the identities that survived version gating. The emitted shape
+    # is an object in 1.5 and an array in newer BOMs created by this library.
+    private def validate_evidence(evidence : JSON::Any, path : String)
+      identity = evidence.as_h?.try(&.[]?("identity"))
+      return unless identity
 
-      identities.each_with_index do |identity, i|
-        identity_path = "#{path}.identity[#{i}]"
-        if field = identity.field
-          unless EvidenceIdentity::VALID_FIELDS.includes?(field)
-            add_error("#{identity_path}.field",
-              "invalid identity field '#{field}', valid: #{EvidenceIdentity::VALID_FIELDS.join(", ")}")
-          end
-        end
+      if entries = identity.as_a?
+        entries.each_with_index { |entry, i| validate_identity(entry, "#{path}.identity[#{i}]") }
+      else
+        validate_identity(identity, "#{path}.identity")
+      end
+    end
 
-        next unless methods = identity.methods
-        methods.each_with_index do |method, j|
-          unless EvidenceMethod::VALID_TECHNIQUES.includes?(method.technique)
-            add_error("#{identity_path}.methods[#{j}].technique",
-              "invalid technique '#{method.technique}', valid: #{EvidenceMethod::VALID_TECHNIQUES.join(", ")}")
-          end
+    private def validate_identity(identity : JSON::Any, path : String)
+      if field = identity["field"]?.try(&.as_s?)
+        unless EvidenceIdentity::VALID_FIELDS.includes?(field)
+          add_error("#{path}.field", "invalid identity field '#{field}', valid: #{EvidenceIdentity::VALID_FIELDS.join(", ")}")
         end
+      else
+        add_error("#{path}.field", "is required")
+      end
+      validate_evidence_confidence(identity, "#{path}.confidence", required: false)
+
+      identity["methods"]?.try(&.as_a?).try &.each_with_index do |method, i|
+        method_path = "#{path}.methods[#{i}]"
+        technique = method["technique"].as_s
+        unless EvidenceMethod::VALID_TECHNIQUES.includes?(technique)
+          add_error("#{method_path}.technique", "invalid technique '#{technique}', valid: #{EvidenceMethod::VALID_TECHNIQUES.join(", ")}")
+        end
+        validate_evidence_confidence(method, "#{method_path}.confidence", required: true)
+      end
+    end
+
+    private def validate_evidence_confidence(entry : JSON::Any, path : String, required : Bool)
+      if confidence = entry["confidence"]?.try(&.as_f?)
+        add_error(path, "must be between 0 and 1") unless 0 <= confidence <= 1
+      elsif required
+        add_error(path, "is required")
       end
     end
 

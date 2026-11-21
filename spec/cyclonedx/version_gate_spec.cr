@@ -406,7 +406,7 @@ describe CycloneDX::VersionGate do
       %w[omniborId swhid].each do |field|
         validator = CycloneDX::Validator.new
         validator.validate(identity_bom.call("1.5", field)).should be_false
-        error = validator.errors.find!(&.path.ends_with?("identity[0].field"))
+        error = validator.errors.find!(&.path.ends_with?("identity.field"))
         error.message.should contain(field)
         error.message.should contain("no older equivalent")
       end
