@@ -94,7 +94,7 @@ module CycloneDX
         end
       end
 
-      if formulas = bom.formulation
+      if (formulas = bom.formulation) && !VersionGate.newer?(VersionGate::GATED[:bom]["formulation"], @spec_version)
         formulas.each_with_index do |formula, i|
           validate_formula(formula, "$.formulation[#{i}]")
         end
@@ -443,28 +443,27 @@ module CycloneDX
     end
 
     private def validate_formula(formula : Formula, path : String)
-      if workflows = formula.workflows
-        workflows.each_with_index do |wf, i|
-          validate_workflow(wf, "#{path}.workflows[#{i}]")
+      formula.workflows.try &.each_with_index do |workflow, i|
+        workflow_path = "#{path}.workflows[#{i}]"
+        validate_formulation_node(workflow, workflow_path)
+        workflow.tasks.try &.each_with_index do |task, j|
+          validate_formulation_node(task, "#{workflow_path}.tasks[#{j}]")
         end
       end
     end
 
-    private def validate_workflow(wf : Workflow, path : String)
-      if tasks = wf.tasks
-        tasks.each_with_index do |task, i|
-          validate_task(task, "#{path}.tasks[#{i}]")
-        end
-      end
-    end
+    private def validate_formulation_node(node : Workflow | Task, path : String)
+      add_error("#{path}.bom-ref", "is required") if node.bom_ref.nil?
+      add_error("#{path}.uid", "is required") if node.uid.nil?
 
-    private def validate_task(task : Task, path : String)
-      if types = task.task_types
+      if types = node.task_types
         types.each_with_index do |t, i|
           unless Task::VALID_TASK_TYPES.includes?(t)
             add_error("#{path}.taskTypes[#{i}]", "invalid task type '#{t}', valid: #{Task::VALID_TASK_TYPES.join(", ")}")
           end
         end
+      else
+        add_error("#{path}.taskTypes", "is required")
       end
     end
 
