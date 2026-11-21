@@ -498,6 +498,34 @@ describe CycloneDX::Validator do
       validator.errors.map(&.path).should eq(["$.services[0].externalReferences[0].hashes[0].content"])
     end
 
+    it "requires annotation subjects, an annotator, a timestamp and text" do
+      notes = [CycloneDX::Annotation.new]
+      validator = CycloneDX::Validator.new
+      {"1.5", "1.6", "1.7"}.each do |version|
+        bom = CycloneDX::BOM.new([] of CycloneDX::Component, version, annotations: notes)
+        validator.validate(bom).should be_false
+        validator.errors.map(&.path).sort.should eq(%w[annotator subjects text timestamp].map { |field| "$.annotations[0].#{field}" })
+      end
+    end
+
+    it "requires exactly one kind of annotator" do
+      actors = [
+        CycloneDX::Annotator.new,
+        CycloneDX::Annotator.new(
+          organization: CycloneDX::OrganizationalEntity.new(name: "team"),
+          individual: CycloneDX::OrganizationalContact.new(name: "reviewer")),
+      ]
+      notes = actors.map do |actor|
+        CycloneDX::Annotation.new(subjects: [] of String, annotator: actor,
+          timestamp: "2024-01-01T00:00:00Z", text: "Reviewed")
+      end
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", annotations: notes)
+      validator = CycloneDX::Validator.new
+
+      validator.validate(bom).should be_false
+      validator.errors.map(&.path).should eq(["$.annotations[0].annotator", "$.annotations[1].annotator"])
+    end
+
     it "reports invalid UTF-8 instead of raising" do
       bad = String.new(Bytes[0xff, 0xfe])
       bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"1.6","serialNumber":"#{bad}",
@@ -518,7 +546,7 @@ describe CycloneDX::Validator do
       comp = CycloneDX::Component.new(name: "a", version: "1", pedigree: pedigree)
       metadata = CycloneDX::Metadata.new(tool_components: [bad], tool_services: [bad_svc])
       vuln = CycloneDX::Vulnerability.new(id: "CVE-1", tool_components: [bad], tool_services: [bad_svc])
-      note = CycloneDX::Annotation.new(subjects: [] of String, text: "x",
+      note = CycloneDX::Annotation.new(subjects: [] of String, text: "x", timestamp: "2024-01-01T00:00:00Z",
         annotator: CycloneDX::Annotator.new(component: bad))
       bom = CycloneDX::BOM.new([comp], "1.6", metadata: metadata, vulnerabilities: [vuln], annotations: [note])
       validator = CycloneDX::Validator.new
