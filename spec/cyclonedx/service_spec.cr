@@ -78,6 +78,14 @@ describe CycloneDX::Service do
   end
 
   describe "#to_xml" do
+    it "preserves explicit false service flags" do
+      svc = CycloneDX::Service.new(name: "api", authenticated: false, x_trust_boundary: false)
+      xml = XML.build { |builder| svc.to_xml(builder) }
+
+      xml.should contain("<authenticated>false</authenticated>")
+      xml.should contain("<x-trust-boundary>false</x-trust-boundary>")
+    end
+
     it "serializes correctly" do
       provider = CycloneDX::OrganizationalEntity.new(name: "Corp")
       data = [CycloneDX::DataClassification.new(flow: "outbound", classification: "PII")]

@@ -696,7 +696,7 @@ module CycloneDX
       if tv = @tag_version
         attrs["tagVersion"] = tv.to_s
       end
-      if patch = @patch
+      @patch.try do |patch|
         attrs["patch"] = patch.to_s
       end
       xml.element("swid", attributes: attrs) do
