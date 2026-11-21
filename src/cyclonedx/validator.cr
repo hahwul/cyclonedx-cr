@@ -520,9 +520,13 @@ module CycloneDX
         affects.each_with_index do |affect, i|
           if versions = affect.versions
             versions.each_with_index do |ver, j|
+              version_path = "#{path}.affects[#{i}].versions[#{j}]"
+              if ver.version.nil? == ver.range.nil?
+                add_error(version_path, "must have exactly one of 'version' or 'range'")
+              end
               if status = ver.status
                 unless AffectedVersion::VALID_STATUSES.includes?(status)
-                  add_error("#{path}.affects[#{i}].versions[#{j}].status", "invalid status '#{status}'")
+                  add_error("#{version_path}.status", "invalid status '#{status}'")
                 end
               end
             end

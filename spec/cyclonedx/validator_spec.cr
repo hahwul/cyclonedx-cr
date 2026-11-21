@@ -198,6 +198,28 @@ describe CycloneDX::Validator do
       validator.errors.should be_empty
     end
 
+    it "requires exactly one selector for each affected version entry" do
+      component = CycloneDX::Component.new(name: "lib", bom_ref: "lib")
+      versions = [
+        CycloneDX::AffectedVersion.new(status: "affected"),
+        CycloneDX::AffectedVersion.new(version: "1.0", range: "vers:generic/>=1.0"),
+        CycloneDX::AffectedVersion.new(version: "1.0"),
+        CycloneDX::AffectedVersion.new(range: "vers:generic/>=1.0"),
+      ]
+      affect = CycloneDX::VulnerabilityAffect.new(ref: "lib", versions: versions)
+      vulnerability = CycloneDX::Vulnerability.new(id: "example", affects: [affect])
+      validator = CycloneDX::Validator.new
+
+      {"1.4", "1.5", "1.6", "1.7"}.each do |version|
+        bom = CycloneDX::BOM.new([component], version, vulnerabilities: [vulnerability])
+        validator.validate(bom).should be_false
+        validator.errors.map(&.path).should eq([
+          "$.vulnerabilities[0].affects[0].versions[0]",
+          "$.vulnerabilities[0].affects[0].versions[1]",
+        ])
+      end
+    end
+
     it "detects a duplicate bom-ref anywhere in the document" do
       bom = CycloneDX::BOM.new([
         CycloneDX::Component.new(name: "a", version: "1", bom_ref: "dup"),
