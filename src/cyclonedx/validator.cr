@@ -242,9 +242,17 @@ module CycloneDX
       entries.each_with_index do |entry, i|
         obj = entry.as_h?
         next unless obj
-        next unless obj.has_key?("phase")
-        next unless obj.has_key?("name") || obj.has_key?("description")
-        add_error("#{path}[#{i}]", "must have either a 'phase' or a 'name', not both")
+        entry_path = "#{path}[#{i}]"
+        if phase = obj["phase"]?.try(&.as_s?)
+          unless Lifecycle::VALID_PHASES.includes?(phase)
+            add_error("#{entry_path}.phase", "invalid phase '#{phase}'")
+          end
+          if obj.has_key?("name") || obj.has_key?("description")
+            add_error(entry_path, "must have either a 'phase' or a 'name', not both")
+          end
+        elsif !obj.has_key?("name")
+          add_error(entry_path, "must have a 'phase' or a 'name'")
+        end
       end
     end
 
@@ -519,16 +527,6 @@ module CycloneDX
       if timestamp = metadata.timestamp
         unless valid_timestamp?(timestamp)
           add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
-        end
-      end
-
-      if lifecycles = metadata.lifecycles
-        lifecycles.each_with_index do |lc, i|
-          if phase = lc.phase
-            unless Lifecycle::VALID_PHASES.includes?(phase)
-              add_error("#{path}.lifecycles[#{i}].phase", "invalid phase '#{phase}'")
-            end
-          end
         end
       end
 
