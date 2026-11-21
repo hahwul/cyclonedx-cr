@@ -4,6 +4,7 @@ require "../../src/cyclonedx/metadata"
 require "../../src/cyclonedx/validator"
 require "../../src/cyclonedx/annotation"
 require "../../src/cyclonedx/declaration"
+require "../support/schema_validation"
 
 # Normalises a serialized BOM so two outputs can be compared on their *core*
 # structure only (the per-version `specVersion`/`$schema` and the random
@@ -51,6 +52,27 @@ private def expr_bom(version : String) : CycloneDX::BOM
 end
 
 describe CycloneDX::VersionGate do
+  it "keeps dependency graph nodes after removing provides in 1.4 and 1.5" do
+    library = CycloneDX::Component.new(name: "library", bom_ref: "library")
+    api = CycloneDX::Component.new(name: "api", bom_ref: "api")
+    graph = [CycloneDX::Dependency.new(ref: "library", provides: ["api"])]
+
+    {"1.4", "1.5", "1.6", "1.7"}.each do |version|
+      bom = CycloneDX::BOM.new([library, api], version, dependencies: graph)
+      xml = bom.to_xml
+      json = JSON.parse(bom.to_json)["dependencies"].as_a.first
+      json["ref"].should eq("library")
+      if version.in?("1.4", "1.5")
+        xml.should contain(%(<dependencies><dependency ref="library"/></dependencies>))
+        json["provides"]?.should be_nil
+      else
+        xml.should contain(%(<dependency ref="library"><provides ref="api"/></dependency>))
+        json["provides"].should eq(JSON.parse(%(["api"])))
+      end
+      assert_schema_valid(bom, "dependency graph after version gating")
+    end
+  end
+
   describe "(a) metadata.lifecycles / bom.annotations gating" do
     it "does NOT emit lifecycles or annotations when declared as 1.4" do
       lc = CycloneDX::Lifecycle.new(phase: "build")

@@ -593,9 +593,9 @@ module CycloneDX
 
         had_children = child.children.any?(&.element?)
         strip_xml(child, spec_version)
-        # Mirrors `emptied_by_filter?`: a container the filter hollowed out is
-        # removed rather than left as an empty element.
-        child.unlink if had_children && child.children.none?(&.element?)
+        # Mirrors `emptied_by_filter?` for containers. A dependency's ref
+        # still identifies a graph node even when it has no edges.
+        child.unlink if child.name != "dependency" && had_children && child.children.none?(&.element?)
       end
     end
 
