@@ -518,6 +518,13 @@ describe "App Integration" do
   end
 
   describe "PURL canonicalization and encoding" do
+    it "decodes escaped git URL path segments before canonicalizing the PURL" do
+      purls = canon_purls
+      purls["gh_escaped_path"].should eq("pkg:github/owner/repo@v1.0.0")
+      purls["gl_escaped_subgroup"].should eq("pkg:gitlab/Team/Sub_group/Repo@v1.0.0")
+      purls["gl_escaped_separator"]?.should be_nil
+    end
+
     it "lowercases the namespace/name for github (case-insensitive type)" do
       canon_purls["gh_upper"].should eq("pkg:github/sysexitcode/foo@v1.0.0")
     end
