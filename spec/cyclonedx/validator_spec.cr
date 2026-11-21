@@ -371,6 +371,25 @@ describe CycloneDX::Validator do
       end
     end
 
+    it "requires each lifecycle to have a phase or name from 1.5" do
+      lifecycles = [CycloneDX::Lifecycle.new, CycloneDX::Lifecycle.new(description: "Custom stage")]
+      metadata = CycloneDX::Metadata.new(lifecycles: lifecycles)
+
+      {"1.5", "1.6", "1.7"}.each do |version|
+        validator = CycloneDX::Validator.new
+        validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, version, metadata: metadata)).should be_false
+        validator.errors.map(&.path).should eq(["$.metadata.lifecycles[0]", "$.metadata.lifecycles[1]"])
+      end
+    end
+
+    it "warns about omitted lifecycles in 1.4 even when their content is invalid" do
+      metadata = CycloneDX::Metadata.new(lifecycles: [CycloneDX::Lifecycle.new(phase: "bad-phase")])
+      validator = CycloneDX::Validator.new
+
+      validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.4", metadata: metadata)).should be_true
+      validator.warnings.map(&.path).should eq(["$.metadata.lifecycles"])
+    end
+
     it "detects an invalid rating severity and scoring method" do
       rating = CycloneDX::VulnerabilityRating.new(severity: "SEVERE", method: "bogus-method")
       vuln = CycloneDX::Vulnerability.new(id: "CVE-2024-1", ratings: [rating])
