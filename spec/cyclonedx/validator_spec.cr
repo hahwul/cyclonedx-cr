@@ -103,8 +103,8 @@ describe CycloneDX::Validator do
     end
 
     it "detects invalid task type in formulation" do
-      task = CycloneDX::Task.new(name: "bad", task_types: ["build", "invalid_type"])
-      wf = CycloneDX::Workflow.new(uid: "wf-1", tasks: [task])
+      task = CycloneDX::Task.new(bom_ref: "task", uid: "task-1", name: "bad", task_types: ["build", "invalid_type"])
+      wf = CycloneDX::Workflow.new(bom_ref: "workflow", uid: "wf-1", task_types: ["build"], tasks: [task])
       formula = CycloneDX::Formula.new(workflows: [wf])
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
       validator = CycloneDX::Validator.new
@@ -113,12 +113,43 @@ describe CycloneDX::Validator do
     end
 
     it "passes valid task types" do
-      task = CycloneDX::Task.new(name: "ci", task_types: ["build", "test", "deploy"])
-      wf = CycloneDX::Workflow.new(uid: "wf-1", tasks: [task])
+      task = CycloneDX::Task.new(bom_ref: "task", uid: "task-1", name: "ci", task_types: ["build", "test", "deploy"])
+      wf = CycloneDX::Workflow.new(bom_ref: "workflow", uid: "wf-1", task_types: [] of String, tasks: [task])
       formula = CycloneDX::Formula.new(workflows: [wf])
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: [formula])
       validator = CycloneDX::Validator.new
       validator.validate(bom).should be_true
+    end
+
+    it "checks formulation fields required on both workflows and tasks" do
+      task = CycloneDX::Task.new
+      workflow = CycloneDX::Workflow.new(tasks: [task])
+      formulation = [CycloneDX::Formula.new(workflows: [workflow])]
+      validator = CycloneDX::Validator.new
+      prefix = "$.formulation[0].workflows[0]"
+
+      {"1.5", "1.6", "1.7"}.each do |version|
+        bom = CycloneDX::BOM.new([] of CycloneDX::Component, version, formulation: formulation)
+        validator.validate(bom).should be_false
+        validator.errors.map(&.path).should eq([
+          "#{prefix}.bom-ref", "#{prefix}.uid", "#{prefix}.taskTypes",
+          "#{prefix}.tasks[0].bom-ref", "#{prefix}.tasks[0].uid", "#{prefix}.tasks[0].taskTypes",
+        ])
+      end
+
+      old_bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.4", formulation: formulation)
+      validator.validate(old_bom).should be_true
+      validator.warnings.map(&.path).should eq(["$.formulation"])
+    end
+
+    it "checks task types declared directly on a workflow" do
+      workflow = CycloneDX::Workflow.new(bom_ref: "workflow", uid: "uid", task_types: ["build", "unknown-type"])
+      formulation = [CycloneDX::Formula.new(workflows: [workflow])]
+      bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", formulation: formulation)
+      validator = CycloneDX::Validator.new
+
+      validator.validate(bom).should be_false
+      validator.errors.map(&.path).should eq(["$.formulation[0].workflows[0].taskTypes[1]"])
     end
 
     it "validates nested sub-services" do
