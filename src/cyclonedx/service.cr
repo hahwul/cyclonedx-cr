@@ -82,10 +82,10 @@ module CycloneDX
             end
           end
         end
-        if auth = @authenticated
+        @authenticated.try do |auth|
           xml.element("authenticated") { xml.text auth.to_s }
         end
-        if xtb = @x_trust_boundary
+        @x_trust_boundary.try do |xtb|
           xml.element("x-trust-boundary") { xml.text xtb.to_s }
         end
         if tz = @trust_zone

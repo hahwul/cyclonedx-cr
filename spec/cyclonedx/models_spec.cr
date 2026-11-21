@@ -524,3 +524,11 @@ describe CycloneDX::OrganizationalContact do
     end
   end
 end
+describe CycloneDX::Swid do
+  it "preserves an explicit false patch attribute in XML" do
+    swid = CycloneDX::Swid.new(tag_id: "release", name: "package", patch: false)
+    xml = XML.build { |builder| swid.to_xml(builder) }
+
+    xml.should contain(%(patch="false"))
+  end
+end
