@@ -345,12 +345,25 @@ module CycloneDX
       return if annotations.nil? || VersionGate.newer?(OBJECTS_SINCE, @spec_version)
       annotations.each_with_index do |note, i|
         path = "$.annotations[#{i}]"
-        if (timestamp = note.timestamp) && !valid_timestamp?(timestamp)
-          add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
+        add_error("#{path}.subjects", "is required") if note.subjects.nil?
+        add_error("#{path}.text", "is required") if note.text.nil?
+        if timestamp = note.timestamp
+          unless valid_timestamp?(timestamp)
+            add_error("#{path}.timestamp", "'#{timestamp}' is not an RFC 3339 date-time")
+          end
+        else
+          add_error("#{path}.timestamp", "is required")
         end
-        next unless annotator = note.annotator
-        annotator.component.try { |comp| validate_component(comp, "#{path}.annotator.component") }
-        annotator.service.try { |svc| validate_service(svc, "#{path}.annotator.service") }
+        if annotator = note.annotator
+          kinds = {annotator.organization, annotator.individual, annotator.component, annotator.service}
+          unless kinds.count { |kind| !kind.nil? } == 1
+            add_error("#{path}.annotator", "must have exactly one organization, individual, component or service")
+          end
+          annotator.component.try { |comp| validate_component(comp, "#{path}.annotator.component") }
+          annotator.service.try { |svc| validate_service(svc, "#{path}.annotator.service") }
+        else
+          add_error("#{path}.annotator", "is required")
+        end
       end
     end
 
