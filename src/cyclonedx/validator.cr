@@ -108,6 +108,8 @@ module CycloneDX
 
       validate_document(bom)
       validate_spec_version_fields(bom)
+    rescue ex : JSON::Error
+      add_error("$", "cannot serialize the BOM as JSON: #{ex.message}")
     end
 
     # Keys whose values are `bom-ref` *references* rather than definitions.

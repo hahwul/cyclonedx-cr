@@ -48,6 +48,20 @@ describe CycloneDX::Validator do
       validator.errors.any?(&.path.includes?("score")).should be_true
     end
 
+    it "reports non-finite JSON numbers instead of raising" do
+      validator = CycloneDX::Validator.new
+      {Float64::NAN, Float64::INFINITY, -Float64::INFINITY}.each do |score|
+        rating = CycloneDX::VulnerabilityRating.new(score: score)
+        vuln = CycloneDX::Vulnerability.new(id: "example", ratings: [rating])
+        bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", vulnerabilities: [vuln])
+
+        validator.validate(bom).should be_false
+        validator.errors.map(&.path).should eq(["$.vulnerabilities[0].ratings[0].score", "$"])
+        validator.errors.last.message.should contain("not allowed in JSON")
+      end
+      validator.validate(CycloneDX::BOM.new([] of CycloneDX::Component, "1.6")).should be_true
+    end
+
     it "detects invalid composition aggregate" do
       comp = CycloneDX::Composition.new(aggregate: "totally_made_up")
       bom = CycloneDX::BOM.new([] of CycloneDX::Component, "1.6", compositions: [comp])
