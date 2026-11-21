@@ -868,7 +868,13 @@ class App
     uri = URI.parse(url)
     host = uri.host
     return if host.nil? || host.empty?
-    {host.downcase, uri.path}
+    return if uri.path.matches?(/%(?![0-9a-fA-F]{2})/)
+
+    # Decode URL escapes before suffix stripping and case normalization. An
+    # escaped slash inside a segment cannot be a repository path separator.
+    segments = uri.path.split('/').map { |segment| URI.decode(segment) }
+    return if segments.any? { |segment| !segment.valid_encoding? || segment.matches?(/[\/[:cntrl:]]/) || segment.in?(".", "..") }
+    {host.downcase, segments.join('/')}
   rescue URI::Error | OverflowError # a port too big for Int32
     nil
   end

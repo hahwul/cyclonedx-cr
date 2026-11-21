@@ -33,3 +33,12 @@ shards:
   gh_trailing_query:
     git: https://github.com/Owner/Repo.git/?x=1
     version: 8.0.0
+  gh_escaped_path:
+    git: https://github.com/%4Fwner/%52epo%2Egit
+    version: 1.0.0
+  gl_escaped_subgroup:
+    git: https://gitlab.com/Team/Sub%5Fgroup/Repo.git
+    version: 1.0.0
+  gl_escaped_separator:
+    git: https://gitlab.com/Team/Sub%2Fgroup/Repo.git
+    version: 1.0.0
