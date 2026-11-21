@@ -197,7 +197,8 @@ class App
         # is kept and flagged here; genuine positional arguments (which this tool
         # never accepts) are likewise flagged so a dropped dash like
         # `spec-version 1.5` is not silently ignored.
-        positionals = (before + after).reject { |arg| arg.starts_with?('-') && arg != "-" }
+        # After `--`, even a dash-prefixed argument is positional.
+        positionals = before.reject { |arg| arg.starts_with?('-') && arg != "-" } + after
         unless positionals.empty?
           STDERR.puts "Error: Unexpected argument(s): #{positionals.join(", ")}. This tool takes options only."
           STDERR.puts parser

@@ -107,6 +107,17 @@ describe "App Integration" do
       $?.success?.should be_true
     end
 
+    it "rejects option-like positional arguments after the option separator" do
+      stdout = IO::Memory.new
+      stderr = IO::Memory.new
+      args = ["-s", "#{FIXTURES}/minimal_shard.yml", "-i", "#{FIXTURES}/empty_lock.lock", "--", "--output-format=xml", "-v"]
+      status = Process.run(BINARY, args, output: stdout, error: stderr)
+
+      status.exit_code.should eq(1)
+      stdout.to_s.should be_empty
+      stderr.to_s.should contain("Unexpected argument(s): --output-format=xml, -v")
+    end
+
     it "reports its version with --version and -v" do
       # The version it prints is the one it stamps into `metadata.tools`.
       %w[--version -v].each do |flag|
