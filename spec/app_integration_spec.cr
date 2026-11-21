@@ -594,6 +594,17 @@ describe "App Integration" do
       shorthand_purls["too_deep"]?.should be_nil
     end
 
+    it "only emits a vcs reference when a shorthand has a valid path for its forge" do
+      output = `#{BINARY} -s #{FIXTURES}/minimal_shard.yml -i #{FIXTURES}/shorthand_lock.lock 2>/dev/null`
+      $?.success?.should be_true
+      components = JSON.parse(output)["components"].as_a.to_h { |component| {component["name"].as_s, component} }
+
+      {"too_deep", "bitbucket_too_deep", "codeberg_too_deep"}.each do |name|
+        components[name]["externalReferences"]?.should be_nil
+      end
+      components["gitlab_subgroup"]["externalReferences"][0]["url"].should eq("https://gitlab.com/group/subgroup/repo")
+    end
+
     it "skips a PURL for a shorthand missing a namespace" do
       shorthand_purls["bare_name"]?.should be_nil
     end

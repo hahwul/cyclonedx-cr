@@ -713,7 +713,8 @@ class App
         when "codeberg"  then details.codeberg
         end
       next unless shorthand
-      path = clean_repo_path(shorthand, OWNER_REPO_SEGMENTS)
+      max_segments = forge == "gitlab" ? Int32::MAX : OWNER_REPO_SEGMENTS
+      path = clean_repo_path(shorthand, OWNER_REPO_SEGMENTS, max_segments)
       return path ? "#{base}#{path}" : nil
     end
 
