@@ -493,6 +493,38 @@ describe CycloneDX::Validator do
       CycloneDX::Validator.new.validate(CycloneDX::BOM.new([comp], "1.6")).should be_true
     end
 
+    it "reports missing fields and out-of-range confidence in emitted identity evidence" do
+      methods = [
+        CycloneDX::EvidenceMethod.new(technique: "binary-analysis"),
+        CycloneDX::EvidenceMethod.new(technique: "manifest-analysis", confidence: -0.1),
+      ]
+      identity = CycloneDX::EvidenceIdentity.new(confidence: 1.1, methods: methods)
+      component = CycloneDX::Component.new(name: "lib", evidence: CycloneDX::Evidence.new(identity: [identity]))
+      validator = CycloneDX::Validator.new
+
+      {"1.5" => "", "1.6" => "[0]", "1.7" => "[0]"}.each do |version, index|
+        validator.validate(CycloneDX::BOM.new([component], version)).should be_false
+        path = "$.components[0].evidence.identity#{index}"
+        validator.errors.map(&.path).should eq([
+          "#{path}.field", "#{path}.confidence", "#{path}.methods[0].confidence", "#{path}.methods[1].confidence",
+        ])
+      end
+    end
+
+    it "reports only downgrade warnings for identities that the gate removes" do
+      identities = [
+        CycloneDX::EvidenceIdentity.new(field: "name", confidence: 0.0),
+        CycloneDX::EvidenceIdentity.new(field: "bogus"),
+        CycloneDX::EvidenceIdentity.new(field: "omniborId"),
+      ]
+      component = CycloneDX::Component.new(name: "lib", evidence: CycloneDX::Evidence.new(identity: identities))
+      {"1.4", "1.5"}.each do |version|
+        validator = CycloneDX::Validator.new
+        validator.validate(CycloneDX::BOM.new([component], version)).should be_true
+        validator.warnings.map(&.path).should eq(["$.components[0].evidence.identity"])
+      end
+    end
+
     it "accepts a parsed BOM without a serial number" do
       # serialNumber is optional in every version.
       bom = CycloneDX::BOM.from_json(%({"bomFormat":"CycloneDX","specVersion":"1.6","version":1}))

@@ -398,10 +398,12 @@ module CycloneDX
           next
         end
 
-        child = filter_node(value, spec_version, child_context(context, key),
+        # Collapse repeated identities before filtering their fields so
+        # discarded identities cannot report unrepairable enum violations.
+        shaped = collapse_evidence_identity(context, key, value, spec_version, path, violations)
+        next unless shaped
+        child = filter_node(shaped, spec_version, child_context(context, key),
           "#{path}.#{key}", violations)
-        next unless child
-        child = collapse_evidence_identity(context, key, child, spec_version, path, violations)
         next unless child
         # A container the filter emptied out is dropped rather than emitted as
         # `[]`, which would assert "none exist" instead of "none can be expressed
