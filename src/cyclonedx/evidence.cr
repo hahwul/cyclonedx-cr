@@ -41,7 +41,7 @@ module CycloneDX
       xml.element("method") do
         xml.element("technique") { xml.text @technique }
         if conf = @confidence
-          xml.element("confidence") { xml.text conf.to_s }
+          xml.element("confidence") { xml.text XMLDecimal.format(conf) }
         end
       end
     end
@@ -74,7 +74,7 @@ module CycloneDX
           xml.element("field") { xml.text field }
         end
         if confidence = @confidence
-          xml.element("confidence") { xml.text confidence.to_s }
+          xml.element("confidence") { xml.text XMLDecimal.format(confidence) }
         end
         if methods_val = @methods
           xml.element("methods") do

@@ -2,6 +2,30 @@ require "json"
 require "xml"
 
 module CycloneDX
+  # XML Schema decimals use fixed-point notation. Expand the float's shortest
+  # representation directly so formatting does not round or truncate digits.
+  private module XMLDecimal
+    def self.format(value : Float64) : String
+      text = value.to_s
+      mantissa, separator, exponent = text.partition('e')
+      return text if separator.empty?
+
+      unsigned = mantissa.lchop('-')
+      sign = unsigned == mantissa ? "" : "-"
+      integer, _, fraction = unsigned.partition('.')
+      digits = integer + fraction
+      point = integer.size + exponent.to_i
+
+      if point <= 0
+        "#{sign}0.#{"0" * -point}#{digits}"
+      elsif point >= digits.size
+        "#{sign}#{digits}#{"0" * (point - digits.size)}"
+      else
+        "#{sign}#{digits[0, point]}.#{digits[point..]}"
+      end
+    end
+  end
+
   class AttachedText
     include JSON::Serializable
 
